@@ -1,0 +1,128 @@
+{
+  "key": {
+    "aror": {
+      "jid": "6288807709243@s.whatsapp.net",
+      "noId": "9h2n3uqt4",
+      "acc": "17-03-2026",
+      "ban": false,
+      "cmd": 55,
+      "exp": 57,
+      "moneyDb": {
+        "money": 35569,
+        "moneyInBank": 0
+      },
+      "ai": {
+        "bell": false,
+        "chat": 0,
+        "role": "Gak Kenal"
+      },
+      "afk": {
+        "status": false,
+        "reason": "",
+        "afkStart": ""
+      },
+      "game": {
+        "farm": false,
+        "dead": false,
+        "robbery": {
+          "cost": 3
+        },
+        "buff": {},
+        "debuff": {}
+      }
+    },
+    "Zi'x": {
+      "jid": "6283184031714@s.whatsapp.net",
+      "noId": "1l4a7kiv1",
+      "acc": "17-03-2026",
+      "ban": false,
+      "cmd": 10,
+      "exp": 14,
+      "moneyDb": {
+        "money": 199297,
+        "moneyInBank": 0
+      },
+      "ai": {
+        "bell": true,
+        "chat": 0,
+        "role": "Gak Kenal"
+      },
+      "afk": {
+        "status": false,
+        "reason": "",
+        "afkStart": ""
+      },
+      "game": {
+        "farm": false,
+        "dead": false,
+        "robbery": {
+          "cost": 3
+        },
+        "buff": {},
+        "debuff": {}
+      }
+    },
+    "loading. . .": {
+      "jid": "6283140961614@s.whatsapp.net",
+      "noId": "p61xws4i1",
+      "acc": "17-03-2026",
+      "ban": false,
+      "cmd": 0,
+      "exp": 0,
+      "moneyDb": {
+        "money": 200000,
+        "moneyInBank": 0
+      },
+      "ai": {
+        "bell": false,
+        "chat": 0,
+        "role": "Gak Kenal"
+      },
+      "afk": {
+        "status": false,
+        "reason": "",
+        "afkStart": ""
+      },
+      "game": {
+        "farm": false,
+        "dead": false,
+        "robbery": {
+          "cost": 3
+        },
+        "buff": {},
+        "debuff": {}
+      }
+    },
+    "Lynxx?": {
+      "jid": "6285338594020@s.whatsapp.net",
+      "noId": "k0g204vuq",
+      "acc": "17-03-2026",
+      "ban": false,
+      "cmd": 0,
+      "exp": 0,
+      "moneyDb": {
+        "money": 200000,
+        "moneyInBank": 0
+      },
+      "ai": {
+        "bell": false,
+        "chat": 0,
+        "role": "Gak Kenal"
+      },
+      "afk": {
+        "status": false,
+        "reason": "",
+        "afkStart": ""
+      },
+      "game": {
+        "farm": false,
+        "dead": false,
+        "robbery": {
+          "cost": 3
+        },
+        "buff": {},
+        "debuff": {}
+      }
+    }
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "key": {
+    "GB ISIAN ZI'X X AWENK || GB 1": {
+      "id": "120363417821858154@g.us",
+      "ban": false,
+      "member": 939,
+      "filter": {
+        "mute": false,
+        "antilink": true,
+        "antitagsw": true,
+        "antich": true,
+        "autoback": false,
+        "antitagall": false,
+        "blacklist": [],
+        "badword": {
+          "antibadword": false,
+          "badwordtext": []
+        },
+        "left": {
+          "leftGc": false,
+          "leftText": ""
+        },
+        "welcome": {
+          "welcomeGc": false,
+          "welcomeText": ""
+        }
+      }
+    },
+    "y": {
+      "id": "120363406655795919@g.us",
+      "ban": false,
+      "member": 3,
+      "filter": {
+        "mute": false,
+        "antilink": true,
+        "antitagsw": true,
+        "antich": true,
+        "autoback": false,
+        "antitagall": false,
+        "blacklist": [],
+        "badword": {
+          "antibadword": false,
+          "badwordtext": []
+        },
+        "left": {
+          "leftGc": false,
+          "leftText": ""
+        },
+        "welcome": {
+          "welcomeGc": false,
+          "welcomeText": ""
+        }
+      }
+    }
+  }
+}
