@@ -5,10 +5,10 @@
       "noId": "9h2n3uqt4",
       "acc": "17-03-2026",
       "ban": false,
-      "cmd": 55,
-      "exp": 57,
+      "cmd": 91,
+      "exp": 99,
       "moneyDb": {
-        "money": 35569,
+        "money": 19021,
         "moneyInBank": 0
       },
       "ai": {
@@ -102,6 +102,68 @@
       "exp": 0,
       "moneyDb": {
         "money": 200000,
+        "moneyInBank": 0
+      },
+      "ai": {
+        "bell": false,
+        "chat": 0,
+        "role": "Gak Kenal"
+      },
+      "afk": {
+        "status": false,
+        "reason": "",
+        "afkStart": ""
+      },
+      "game": {
+        "farm": false,
+        "dead": false,
+        "robbery": {
+          "cost": 3
+        },
+        "buff": {},
+        "debuff": {}
+      }
+    },
+    "오직 Li Yue  ||  Rieen": {
+      "jid": "6285697851096@s.whatsapp.net",
+      "noId": "1qj0ci69k",
+      "acc": "18-03-2026",
+      "ban": false,
+      "cmd": 10,
+      "exp": 28,
+      "moneyDb": {
+        "money": 190999,
+        "moneyInBank": 0
+      },
+      "ai": {
+        "bell": false,
+        "chat": 0,
+        "role": "Gak Kenal"
+      },
+      "afk": {
+        "status": false,
+        "reason": "",
+        "afkStart": ""
+      },
+      "game": {
+        "farm": false,
+        "dead": false,
+        "robbery": {
+          "cost": 3
+        },
+        "buff": {},
+        "debuff": {}
+      }
+    },
+    "Xian Zhou 先周": {
+      "jid": "6285640433037@s.whatsapp.net",
+      "noId": "hz3730ewl",
+      "acc": "18-03-2026",
+      "ban": false,
+      "cmd": 3,
+      "exp": 9,
+      "moneyDb": {
+        "money": 197000,
         "moneyInBank": 0
       },
       "ai": {

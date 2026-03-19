@@ -86,6 +86,162 @@ export default function maker(ev) {
     }
   })
 
+  // ==========================================
+  // FAKE GROUP ANDROID (Pemisah Tanda Kutip "")
+  // ==========================================
+  ev.on({
+    name: 'fake group',
+    cmd: ['fakegroup', 'fakegroupandroid', 'fgandroid', 'fga'],
+    tags: 'Maker Menu',
+    desc: 'membuat gambar fake group whatsapp android',
+    owner: !1,
+    prefix: !0,
+    money: 100,
+    exp: 0.1,
+
+    run: async (xp, m, { args, chat, cmd, prefix }) => {
+      try {
+        let text = args.join(" ").trim()
+        let imageUrl = null
+
+        const urlMatch = text.match(/https?:\/\/\S+/)
+        if (urlMatch) {
+          imageUrl = urlMatch[0]
+          text = text.replace(imageUrl, "").trim()
+        }
+
+        // Ambil teks di dalam tanda kutip ""
+        const arr = [...text.matchAll(/"([^"]+)"/g)].map(v => v[1])
+        
+        if (arr.length < 4) {
+          return await xp.sendMessage(chat.id, { 
+            text: `⚠️ *Format penggunaan :*\n📍 *Parameter:* "Nama Group" "member" "deskripsi" "tanggal"\n\n💬 *Contoh 1:*\n${prefix}${cmd} "GB ISIAN ZI'X X AWENK || GB 1" "941" "?" "12/04/25"\n\n💬 *Contoh 2 (Reply/Kirim Gambar):*\n${prefix}${cmd} "Grup Santai" "800" "Welcome" "01/02/26"` 
+          }, { quoted: m })
+        }
+
+        const [name, members, desc, date] = arr
+
+        await xp.sendMessage(chat.id, { react: { text: "🕒", key: m.key } })
+
+        const q = m.message?.extendedTextMessage?.contextInfo?.quotedMessage
+        const isImageMsg = q?.imageMessage || m.message?.imageMessage
+
+        if (!imageUrl && isImageMsg) {
+          const buf = await downloadMediaMessage({ message: q || m.message }, 'buffer')
+          if (buf) {
+            const f = new fd()
+            f.append('files[]', buf, { filename: 'fga.jpg', contentType: 'image/jpeg' })
+            const { data } = await axios.post('https://uguu.se/upload.php', f, { headers: f.getHeaders() })
+            imageUrl = data?.files?.[0]?.url
+          }
+        }
+
+        if (!imageUrl) {
+          const sender = m.message?.extendedTextMessage?.contextInfo?.participant || chat.sender
+          try {
+            imageUrl = await xp.profilePictureUrl(sender, "image")
+          } catch {
+            imageUrl = "https://i.ibb.co/bjpkpXhm/image-1773651795677.jpg"
+          }
+        }
+
+        if (!imageUrl) throw new Error("Gagal memproses gambar")
+
+        const api = `https://kazztzyy.my.id/api/maker/fakegroup?image=${encodeURIComponent(imageUrl)}&name=${encodeURIComponent(name)}&members=${encodeURIComponent(members)}&desc=${encodeURIComponent(desc)}&date=${encodeURIComponent(date)}`
+
+        await xp.sendMessage(chat.id, {
+          image: { url: api },
+          caption: "*Fake Group Android berhasil dibuat* ✅\n> *Powered By " + global.botName + "*"
+        }, { quoted: m })
+
+        await xp.sendMessage(chat.id, { react: { text: "✅", key: m.key } })
+
+      } catch (e) {
+        err(`error pada ${cmd}`, e)
+        await xp.sendMessage(chat.id, { react: { text: "❌", key: m.key } })
+        await xp.sendMessage(chat.id, { text: `⚠️ Maaf, terjadi kesalahan saat memproses permintaan anda.\n💡 Detail Error: ${e.message}` }, { quoted: m })
+      }
+    }
+  })
+
+  // ==========================================
+  // FAKE GROUP IOS/IPHONE (Pemisah Tanda Kutip "")
+  // ==========================================
+  ev.on({
+    name: 'fake group ios',
+    cmd: ['fakegroupios', 'fakegroupiphone', 'fgios', 'fgi'],
+    tags: 'Maker Menu',
+    desc: 'membuat gambar fake group whatsapp iphone',
+    owner: !1,
+    prefix: !0,
+    money: 100,
+    exp: 0.1,
+
+    run: async (xp, m, { args, chat, cmd, prefix }) => {
+      try {
+        let text = args.join(" ").trim()
+        let imageUrl = null
+
+        const urlMatch = text.match(/https?:\/\/\S+/)
+        if (urlMatch) {
+          imageUrl = urlMatch[0]
+          text = text.replace(imageUrl, "").trim()
+        }
+
+        // Ambil teks di dalam tanda kutip ""
+        const arr = [...text.matchAll(/"([^"]+)"/g)].map(v => v[1])
+        
+        if (arr.length < 2) {
+          return await xp.sendMessage(chat.id, { 
+            text: `⚠️ *Format penggunaan :*\n📍 *Parameter:* "Nama Group" "jumlah member"\n\n💬 *Contoh 1:*\n${prefix}${cmd} "GB ISIAN ZI'X X AWENK || GB 1" "941"\n\n💬 *Contoh 2 (Reply/Kirim Gambar):*\n${prefix}${cmd} "Keluarga Cemara" "12"` 
+          }, { quoted: m })
+        }
+
+        const [name, members] = arr
+
+        await xp.sendMessage(chat.id, { react: { text: "🕒", key: m.key } })
+
+        const q = m.message?.extendedTextMessage?.contextInfo?.quotedMessage
+        const isImageMsg = q?.imageMessage || m.message?.imageMessage
+
+        if (!imageUrl && isImageMsg) {
+          const buf = await downloadMediaMessage({ message: q || m.message }, 'buffer')
+          if (buf) {
+            const f = new fd()
+            f.append('files[]', buf, { filename: 'fgi.jpg', contentType: 'image/jpeg' })
+            const { data } = await axios.post('https://uguu.se/upload.php', f, { headers: f.getHeaders() })
+            imageUrl = data?.files?.[0]?.url
+          }
+        }
+
+        if (!imageUrl) {
+          const sender = m.message?.extendedTextMessage?.contextInfo?.participant || chat.sender
+          try {
+            imageUrl = await xp.profilePictureUrl(sender, "image")
+          } catch {
+            imageUrl = "https://i.ibb.co/bjpkpXhm/image-1773651795677.jpg"
+          }
+        }
+
+        if (!imageUrl) throw new Error("Gagal memproses gambar")
+
+        const api = `https://kazztzyy.my.id/api/maker/fakegroup2?image=${encodeURIComponent(imageUrl)}&name=${encodeURIComponent(name)}&members=${encodeURIComponent(members)}`
+
+        await xp.sendMessage(chat.id, {
+          image: { url: api },
+          caption: "*Fake Group iPhone berhasil dibuat* ✅\n> *Powered By " + global.botName + "*"
+        }, { quoted: m })
+
+        await xp.sendMessage(chat.id, { react: { text: "✅", key: m.key } })
+
+      } catch (e) {
+        err(`error pada ${cmd}`, e)
+        await xp.sendMessage(chat.id, { react: { text: "❌", key: m.key } })
+        await xp.sendMessage(chat.id, { text: `⚠️ Maaf, terjadi kesalahan saat memproses permintaan anda.\n💡 Detail Error: ${e.message}` }, { quoted: m })
+      }
+    }
+  })
+
   ev.on({
     name: 'fake ngl',
     cmd: ['ngl', 'fakengl'],

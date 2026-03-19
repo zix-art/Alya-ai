@@ -84,81 +84,8 @@ const unloadFile = file => {
   ev.cmd = ev.cmd.filter(x => x.file !== file)
 }
 
-/*const loadFile = async (obj, reload = true) => {
-  try {
-    const { file: f, dir } = obj
-    const fp = p.join(dir, f)
-          oldMap = new Map(
-            (ev.cmd ?? [])
-              .filter(x => x.file === f)
-              .map(x => [x.id, x])
-          ),
-          originalOn = ev.on.bind(ev)
-
-    reload ? unloadFile(f) : null
-
-    ev.on = def => {
-      if (typeof def !== 'object' || !def.cmd)
-        return originalOn(def)
-
-      def.file ??= f
-      def.id ??= _idCmd(def)
-
-      const cmds = Array.isArray(def.cmd) ? def.cmd : [def.cmd],
-            id = def.id,
-            old = oldMap.get(id)
-
-      if (old) {
-        const runSame = old.run === def.run,
-              configSame =
-                old.owner === def.owner &&
-                old.prefix === def.prefix &&
-                old.money === def.money &&
-                old.exp === def.exp,
-              same = runSame && configSame
-
-        if (same) return
-
-        if (old.handlers?.size) {
-          for (const [cmd, fn] of old.handlers)
-            ev.removeListener(cmd, fn)
-        }
-
-        ev.cmd = ev.cmd.filter(x => x !== old)
-      }
-
-      def.set = Date.now()
-
-      global.lastCmdUpdate = {
-        name: cmds[0],
-        file: f,
-        time: Date.now()
-      }
-
-      originalOn(def)
-    }
-
-    const mod = await import(
-      pathToFileURL(fp).href + `?update=${Date.now()}`
-    )
-
-    const plugin = mod.default || mod
-
-    typeof plugin === 'function'
-      ? plugin(ev)
-      : null
-
-    ev.on = originalOn
-
-  } catch (e) {
-    log('file error', obj.file)
-    log('detail error:', e)
-  }
-}*/
-
 const loadFile = async (obj, reload = true) => {
   try {
-    console.log('LOAD FILE:', obj.file)
     const { file: f, dir } = obj
     const fp = p.join(dir, f)
 
@@ -180,17 +107,17 @@ const loadAll = async () => {
     }
   }
 
-  const total = ev.cmd ? ev.cmd.length : 0
-  log(c.greenBright.bgGrey.bold(`Berhasil memuat ${total} cmd`))
-  console.log('CMD TERDAFTAR:', ev.cmd?.map(x => x.name))
-}
+  const cmds = ev.cmd?.map(x => x.name) || []
+  const total = cmds.length
 
-/*const loadAll = async () => {
-  const files = fs.readdirSync(dir).filter(x => x.endsWith(".js"))
-  for (const f of files) await loadFile(f, !0)
-  const total = ev.cmd ? ev.cmd.length : 0
-  log(c.greenBright.bgGrey.bold(`Berhasil memuat ${total} cmd`))
-}*/
+  // Tampilan log terminal yang lebih keren dan rapi
+  console.log(
+    c.cyanBright.bold(`\n╭─── [ 🚀 C O D E _ B O T   C M D ] ───⬣\n`) +
+    c.whiteBright(`│ `) + c.greenBright(`Total     : `) + c.yellowBright.bold(`${total} Commands Terdaftar\n`) +
+    c.whiteBright(`│ `) + c.greenBright(`Commands  : `) + c.white(cmds.join(c.magenta(' • '))) +
+    c.cyanBright.bold(`\n╰────────────────────────────────────────⬣\n`)
+  )
+}
 
 const watch = () => {
   const Deb_timer = {}
@@ -216,27 +143,6 @@ const watch = () => {
   }
 }
 
-/*const watch = () => {
-  const Deb_timer = {}
-  try {
-    fs.watch(dir, (_, f) => {
-      if (!f?.endsWith(".js")) return
-      clearTimeout(Deb_timer[f])
-      Deb_timer[f] = setTimeout(() => {
-        log(c.cyanBright.bold(`${f} diedit`))
-        loadFile(f, !0)
-      }, 3e2)
-    })
-  } catch {
-    for (const f of fs.readdirSync(dir).filter(x => x.endsWith(".js"))) {
-      fs.watchFile(p.join(dir, f), () => {
-        log(c.cyanBright.bold(`${f} diedit`))
-        loadFile(f, !0)
-      })
-    }
-  }
-}*/
-
 const handleCmd = async (m, xp, store) => {
   try {
     const { text } = getMessageContent(m)
@@ -259,7 +165,6 @@ const handleCmd = async (m, xp, store) => {
     if (!_cmdLow) return
     if (await ocrs(xp, m)) return
 
-    // Hapus definisi const chat di sini karena sudah didefinisikan di atas
     const sender = chat.sender?.replace(/@s\.whatsapp\.net$/, ''),
           usr = Object.values(db().key).find(u => u.jid === chat.sender),
           ownerNum = [].concat(global.ownerNumber).map(n => n?.replace(/[^0-9]/g, '')),
@@ -269,6 +174,19 @@ const handleCmd = async (m, xp, store) => {
           )
 
     if (!evData || ((evData.prefix ?? !0) ? !pre : pre)) return
+
+    // ==========================================
+    // SISTEM BLOKIR GRUP TIDAK TERDAFTAR (SILENT)
+    // ==========================================
+    if (chat.group) {
+      const isRegistered = !!getGc(chat) // Cek apakah grup ada di database
+      
+      // Jika grup BELUM terdaftar, dan command BUKAN 'daftargc', dan BUKAN command khusus Owner
+      if (!isRegistered && !['daftargc', 'daftargrup'].includes(_cmdLow) && !evData.owner) {
+        return // Langsung hentikan eksekusi tanpa mengirim pesan apapun (Silent)
+      }
+    }
+    // ==========================================
 
     let sub = null
 
@@ -316,6 +234,8 @@ const handleCmd = async (m, xp, store) => {
     }
 
     needSv && await save.db()
+    
+    await xp.sendPresenceUpdate('composing', chat.id).catch(() => {})
 
     ev.emit(_cmdLow, xp, m, {
       args,
@@ -333,3 +253,4 @@ const handleCmd = async (m, xp, store) => {
 
 watch()
 export { handleCmd, loadAll, ev }
+

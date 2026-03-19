@@ -92,6 +92,11 @@ const startBot = async () => {
 
         m = cleanMsg(m)
         m = replaceLid(m)
+        
+        if (m.key && !m.key.fromMe) {
+          await xp.readMessages([m.key]).catch(() => {})
+        
+        }
 
         const chat = global.chat(m, botName),
               time = global.time.timeIndo('Asia/Jakarta', 'HH:mm'),

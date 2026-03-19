@@ -97,6 +97,76 @@ export default function tools(ev) {
   })
   
   ev.on({
+    name: 'like boost',
+    cmd: ['boost', 'likeboost', 'boostlink'],
+    tags: 'Tools Menu',
+    desc: 'Meningkatkan interaksi/boost pada link tertentu',
+    owner: !1, // Bisa dipakai member biasa (ubah ke !0 kalau mau khusus owner)
+    prefix: !0,
+    money: 200, // Biaya bot
+    exp: 0.1,
+
+    run: async (xp, m, {
+      args,
+      chat,
+      cmd,
+      prefix
+    }) => {
+      try {
+        const link = args[0]
+
+        if (!link) {
+          return xp.sendMessage(chat.id, { 
+            text: `⚠️ *Format penggunaan :*\nKirim link yang ingin di-boost.\n\n💬 *Contoh :*\n${prefix}${cmd} https://vt.tiktok.com/ZSuVxM66Rx/` 
+          }, { quoted: m })
+        }
+
+        // Validasi link dasar
+        if (!/^https?:\/\//i.test(link)) {
+          return xp.sendMessage(chat.id, { 
+            text: `❌ Pastikan itu adalah link yang valid (diawali dengan http:// atau https://).` 
+          }, { quoted: m })
+        }
+
+        // Reaksi loading
+        await xp.sendMessage(chat.id, { react: { text: '⏳', key: m.key } })
+
+        // Request ke API LikeBoost
+        const response = await axios.post('https://likeboost.zone.id/api/boost', {
+            link: link,
+            pin: 'admin128'
+        }, {
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'x-api-key': 'LikeBoost-8719-ApiAkses',
+                'User-Agent': 'WhatsApp/2.21.11.17' 
+            }
+        })
+
+        const data = response.data
+
+        // Susun pesan balasan (menyesuaikan response data dari API)
+        const hasilTeks = `✅ *BOOST BERHASIL DIKIRIM!*\n\n🔗 *Target:* ${link}\n📝 *Info:* ${data?.message || data?.status || 'Proses boost sedang berjalan.'}\n\n> *Powered by ${global.botName || 'Alya'}*`
+
+        // Kirim hasil & Reaksi Sukses
+        await xp.sendMessage(chat.id, { text: hasilTeks }, { quoted: m })
+        await xp.sendMessage(chat.id, { react: { text: '✅', key: m.key } })
+
+      } catch (e) {
+        // Menangkap error dari API (misal limit habis, salah PIN, dll)
+        const errDetail = e.response?.data?.message || e.response?.data?.error || e.message
+        console.error(`Error pada command ${cmd}:`, errDetail)
+
+        await xp.sendMessage(chat.id, { react: { text: '❌', key: m.key } })
+        await xp.sendMessage(chat.id, { 
+          text: `❌ *GAGAL MEMPROSES BOOST*\n\n📝 *Pesan:* ${errDetail}\n💡 *Info:* Pastikan link bisa diakses publik atau API sedang tidak gangguan.` 
+        }, { quoted: m })
+      }
+    }
+  })
+  
+  ev.on({
     name: 'wink / wink hd',
     cmd: ['wink', 'unblur'],
     tags: 'Tools Menu',
@@ -166,7 +236,6 @@ export default function tools(ev) {
     }
   });
   
-  /*
   ev.on({
     name: "react teach",
     cmd: ["reactreach","reach"],
@@ -202,70 +271,6 @@ export default function tools(ev) {
             text: result.message
         },{quoted:m})
   
-    }
-  })*/
-  
-  ev.on({
-    name: 'react channel',
-    cmd: ['rch', 'frch', 'fakereactch', 'fakerch', 'reactch'],
-    tags: 'Tools Menu',
-    desc: 'Kirim react boost ke postingan channel WhatsApp',
-    owner: !1,
-    prefix: !0,
-    money: 100, // Biaya bot
-    exp: 0.1,
-
-    run: async (xp, m, {
-      args,
-      chat,
-      cmd,
-      prefix
-    }) => {
-      try {
-        if (args.length < 2) {
-          const teks = `*PENGGUNAAN SALAH*\nCONTOH PENGGUNAAN 😁:\n${prefix}${cmd} <link_post> <emoji>\n\n📌 *Contoh:*\n${prefix}${cmd} https://whatsapp.com/channel/xxx/123 😂 😱`
-          return xp.sendMessage(chat.id, { text: teks }, { quoted: m })
-        }
-
-        const link = args[0]
-        // Filter emoji (menggabungkan spasi & koma agar rapi saat masuk API)
-        const emoji = args.slice(1).join(" ").replace(/,/g, " ").split(/\s+/).filter(e => e.trim()).join(",")
-        
-        // API Key baru kamu
-        const apiKey = "fe90001b48eef66839590b4d322a4660e927c1a5408e92fff62534c39a2b1510"
-
-        // React loading
-        await xp.sendMessage(chat.id, { react: { text: '⏳', key: m.key } })
-
-        const url = `https://react.whyux-xec.my.id/api/rch?link=${encodeURIComponent(link)}&emoji=${encodeURIComponent(emoji)}`
-        
-        const res = await fetch(url, {
-            method: "GET",
-            headers: {
-                "x-api-key": apiKey
-            }
-        })
-
-        const json = await res.json()
-
-        if (json.success) {
-            let teks = `✅ *React Sent!*\n\n🔗 *Target:* ${json.link}\n🎭 *Emoji:* ${json.emojis?.replace(/,/g, ' ') || emoji}`
-            
-            await xp.sendMessage(chat.id, { react: { text: '✅', key: m.key } })
-            await xp.sendMessage(chat.id, { text: teks }, { quoted: m })
-        } else {
-            let lastError = json.details?.message || json.error || 'Unknown error'
-            let teks = `❌ *GAGAL RESPONS*\n\n📝 *Pesan:* ${lastError}\n💡 *Info:* Apikey mungkin habis limit atau link tidak valid.`
-            
-            await xp.sendMessage(chat.id, { react: { text: '❌', key: m.key } })
-            await xp.sendMessage(chat.id, { text: teks }, { quoted: m })
-        }
-
-      } catch (e) {
-        console.error(`Error pada command ${cmd}:`, e)
-        await xp.sendMessage(chat.id, { react: { text: '❌', key: m.key } })
-        await xp.sendMessage(chat.id, { text: "Terjadi Kesalahan Sistem saat memproses request." }, { quoted: m })
-      }
     }
   })
 

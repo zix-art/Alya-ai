@@ -3,6 +3,8 @@ import fetch from 'node-fetch'
 import fs from 'fs'
 import path from 'path'
 import { downloadMediaMessage } from 'baileys'
+const config = JSON.parse(fs.readFileSync('./system/set/config.json'))
+const komputerzKey = config.apikey.komputerz.key
 
 // Fungsi untuk menangani request tipe Stream dari API Atha
 async function fetchAthaAI(prompt, sessionId) {
@@ -58,6 +60,80 @@ async function fetchAthaAI(prompt, sessionId) {
 }
 
 export default function ai(ev) {
+  ev.on({
+    name: 'imagine ai',
+    cmd: ['imagine', 'flux'],
+    tags: 'Ai Menu',
+    desc: 'Membuat gambar dari teks menggunakan Komputerz AI (Model Flux)',
+    owner: !1,
+    prefix: !0,
+    money: 150, // Biaya bot
+    exp: 0.1,
+
+    run: async (xp, m, {
+      args,
+      chat,
+      cmd,
+      prefix
+    }) => {
+      try {
+        const prompt = args.join(' ').trim()
+
+        if (!prompt) {
+          return xp.sendMessage(chat.id, { 
+            text: `Mau bikin gambar apa nih?\n*Contoh:* ${prefix}${cmd} Kucing oren pakai jaket kulit naik motor balap` 
+          }, { quoted: m })
+        }
+
+        // Reaksi loading
+        await xp.sendMessage(chat.id, { react: { text: '⏳', key: m.key } })
+
+        // ⚠️ PENTING: Ganti dengan API Key kamu sendiri dari komputerz.site
+        const apikey = komputerzKey
+        
+        const url = new URL("https://api.komputerz.site/api/v1/ai/imagine")
+        url.searchParams.set("apikey", apikey)
+        url.searchParams.set("prompt", prompt)
+        url.searchParams.set("model", "flux") // Kamu bisa sesuaikan modelnya jika ada model lain
+        // url.searchParams.set("width", "1024") // Aktifkan jika butuh resolusi spesifik
+        // url.searchParams.set("height", "1024") 
+
+        // Eksekusi request API
+        const res = await fetch(url)
+        const data = await res.json()
+
+        // Validasi respon dari API
+        if (!data.status || !data.result?.image_url) {
+           return xp.sendMessage(chat.id, { 
+             text: `❌ *Gagal:* ${data.message || 'API tidak merespon dengan benar. Cek kembali apikey kamu.'}` 
+           }, { quoted: m })
+        }
+
+        const imageUrl = data.result.image_url
+        const sisaLimit = data.remaining
+
+        // Susun pesan balasan
+        const caption = `🎨 *Prompt:* ${prompt}\n🤖 *Model:* ${data.result.model}\n🔋 *Limit API:* ${sisaLimit} tersisa\n\n> *Powered by ${global.botName || 'Code_Bot'}*`
+
+        // Kirim gambar (karena url valid, Baileys bisa langsung baca dari URL-nya)
+        await xp.sendMessage(chat.id, { 
+          image: { url: imageUrl }, 
+          caption: caption 
+        }, { quoted: m })
+
+        // Reaksi sukses
+        await xp.sendMessage(chat.id, { react: { text: '✅', key: m.key } })
+
+      } catch (e) {
+        console.error(`Error pada command ${cmd}:`, e)
+        await xp.sendMessage(chat.id, { react: { text: '❌', key: m.key } })
+        await xp.sendMessage(chat.id, { 
+          text: `❌ Terjadi kesalahan sistem saat mencoba memproses gambar.` 
+        }, { quoted: m })
+      }
+    }
+  })
+  
   ev.on({
     name: 'auto ai',
     cmd: ['ai', 'bell'],

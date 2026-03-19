@@ -38,6 +38,10 @@
     "termai": {
       "key": "Bell409",
       "web": "https://api.termai.cc"
+    },
+    "komputerz": {
+      "key": "KAPI-3C70903AA9CED77CCB091B3B",
+      "web": "https://api.komputerz.site"
     }
   }
 }

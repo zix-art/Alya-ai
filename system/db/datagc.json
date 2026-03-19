@@ -51,6 +51,32 @@
           "welcomeText": ""
         }
       }
+    },
+    "𖤍 𝗖𝗛𝗔𝗧 𝗕𝗢𝗧 || 𝗬𝗨𝗜 [ 모든 왓츠앱 봇 ] 𖤍": {
+      "id": "120363328909338947@g.us",
+      "ban": false,
+      "member": 46,
+      "filter": {
+        "mute": false,
+        "antilink": false,
+        "antitagsw": false,
+        "antich": false,
+        "autoback": false,
+        "antitagall": false,
+        "blacklist": [],
+        "badword": {
+          "antibadword": false,
+          "badwordtext": []
+        },
+        "left": {
+          "leftGc": false,
+          "leftText": ""
+        },
+        "welcome": {
+          "welcomeGc": false,
+          "welcomeText": ""
+        }
+      }
     }
   }
 }
