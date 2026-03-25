@@ -5,11 +5,11 @@
       "noId": "9h2n3uqt4",
       "acc": "17-03-2026",
       "ban": false,
-      "cmd": 91,
-      "exp": 99,
+      "cmd": 176,
+      "exp": 178,
       "moneyDb": {
-        "money": 19021,
-        "moneyInBank": 0
+        "money": 1466,
+        "moneyInBank": 10000
       },
       "ai": {
         "bell": false,
@@ -37,14 +37,14 @@
       "acc": "17-03-2026",
       "ban": false,
       "cmd": 10,
-      "exp": 14,
+      "exp": 15,
       "moneyDb": {
         "money": 199297,
         "moneyInBank": 0
       },
       "ai": {
         "bell": true,
-        "chat": 0,
+        "chat": 1,
         "role": "Gak Kenal"
       },
       "afk": {
@@ -129,10 +129,10 @@
       "noId": "1qj0ci69k",
       "acc": "18-03-2026",
       "ban": false,
-      "cmd": 10,
-      "exp": 28,
+      "cmd": 13,
+      "exp": 35,
       "moneyDb": {
-        "money": 190999,
+        "money": 188499,
         "moneyInBank": 0
       },
       "ai": {
@@ -164,6 +164,223 @@
       "exp": 9,
       "moneyDb": {
         "money": 197000,
+        "moneyInBank": 0
+      },
+      "ai": {
+        "bell": false,
+        "chat": 0,
+        "role": "Gak Kenal"
+      },
+      "afk": {
+        "status": false,
+        "reason": "",
+        "afkStart": ""
+      },
+      "game": {
+        "farm": false,
+        "dead": false,
+        "robbery": {
+          "cost": 3
+        },
+        "buff": {},
+        "debuff": {}
+      }
+    },
+    "Abdul Hasan N": {
+      "jid": "6285256910449@s.whatsapp.net",
+      "noId": "44nma09ln",
+      "acc": "20-03-2026",
+      "ban": false,
+      "cmd": 3,
+      "exp": 3,
+      "moneyDb": {
+        "money": 198999,
+        "moneyInBank": 0
+      },
+      "ai": {
+        "bell": false,
+        "chat": 0,
+        "role": "Gak Kenal"
+      },
+      "afk": {
+        "status": false,
+        "reason": "",
+        "afkStart": ""
+      },
+      "game": {
+        "farm": false,
+        "dead": false,
+        "robbery": {
+          "cost": 3
+        },
+        "buff": {},
+        "debuff": {}
+      }
+    },
+    "Nico": {
+      "jid": "6283171653068@s.whatsapp.net",
+      "noId": "60ayp38lc",
+      "acc": "20-03-2026",
+      "ban": false,
+      "cmd": 0,
+      "exp": 0,
+      "moneyDb": {
+        "money": 200000,
+        "moneyInBank": 0
+      },
+      "ai": {
+        "bell": false,
+        "chat": 0,
+        "role": "Gak Kenal"
+      },
+      "afk": {
+        "status": false,
+        "reason": "",
+        "afkStart": ""
+      },
+      "game": {
+        "farm": false,
+        "dead": false,
+        "robbery": {
+          "cost": 3
+        },
+        "buff": {},
+        "debuff": {}
+      }
+    },
+    "kall": {
+      "jid": "6281525867093@s.whatsapp.net",
+      "noId": "phtd937i0",
+      "acc": "20-03-2026",
+      "ban": false,
+      "cmd": 1,
+      "exp": 1,
+      "moneyDb": {
+        "money": 199500,
+        "moneyInBank": 0
+      },
+      "ai": {
+        "bell": false,
+        "chat": 0,
+        "role": "Gak Kenal"
+      },
+      "afk": {
+        "status": false,
+        "reason": "",
+        "afkStart": ""
+      },
+      "game": {
+        "farm": false,
+        "dead": false,
+        "robbery": {
+          "cost": 3
+        },
+        "buff": {},
+        "debuff": {}
+      }
+    },
+    "Mian B.parker [05025": {
+      "jid": "62895392805035@s.whatsapp.net",
+      "noId": "wt0he5h53",
+      "acc": "20-03-2026",
+      "ban": false,
+      "cmd": 2,
+      "exp": 2,
+      "moneyDb": {
+        "money": 199899,
+        "moneyInBank": 0
+      },
+      "ai": {
+        "bell": false,
+        "chat": 0,
+        "role": "Gak Kenal"
+      },
+      "afk": {
+        "status": false,
+        "reason": "",
+        "afkStart": ""
+      },
+      "game": {
+        "farm": false,
+        "dead": false,
+        "robbery": {
+          "cost": 3
+        },
+        "buff": {},
+        "debuff": {}
+      }
+    },
+    "skybuy store": {
+      "jid": "628139424237@s.whatsapp.net",
+      "noId": "z2k4pz73a",
+      "acc": "21-03-2026",
+      "ban": false,
+      "cmd": 1,
+      "exp": 1,
+      "moneyDb": {
+        "money": 199900,
+        "moneyInBank": 0
+      },
+      "ai": {
+        "bell": false,
+        "chat": 0,
+        "role": "Gak Kenal"
+      },
+      "afk": {
+        "status": false,
+        "reason": "",
+        "afkStart": ""
+      },
+      "game": {
+        "farm": false,
+        "dead": false,
+        "robbery": {
+          "cost": 3
+        },
+        "buff": {},
+        "debuff": {}
+      }
+    },
+    "Dikhh": {
+      "jid": "6285198168701@s.whatsapp.net",
+      "noId": "7c018kplg",
+      "acc": "25-03-2026",
+      "ban": false,
+      "cmd": 1,
+      "exp": 1,
+      "moneyDb": {
+        "money": 199500,
+        "moneyInBank": 0
+      },
+      "ai": {
+        "bell": false,
+        "chat": 0,
+        "role": "Gak Kenal"
+      },
+      "afk": {
+        "status": false,
+        "reason": "",
+        "afkStart": ""
+      },
+      "game": {
+        "farm": false,
+        "dead": false,
+        "robbery": {
+          "cost": 3
+        },
+        "buff": {},
+        "debuff": {}
+      }
+    },
+    "Amjad Khan": {
+      "jid": "923490757696@s.whatsapp.net",
+      "noId": "67guk9lq6",
+      "acc": "25-03-2026",
+      "ban": false,
+      "cmd": 0,
+      "exp": 0,
+      "moneyDb": {
+        "money": 200000,
         "moneyInBank": 0
       },
       "ai": {

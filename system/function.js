@@ -1,5 +1,6 @@
 import fetch from 'node-fetch'
 import fs from 'fs'
+import path from 'path'
 import { bell } from '../cmd/interactive.js'
 import { bnk } from './db/data.js'
 import { tmpFiles } from './tmpfiles.js'
@@ -141,14 +142,134 @@ async function filter(xp, m, text) {
         ? await xp.sendMessage(chat.id, { delete: m.key }).catch(() => {})
         : !1
     },
+    
+    antiCh: async () => {
+      try {
+        // Ambil tipe pesan (bisa teks, gambar, atau video)
+        const msgType = Object.keys(m.message || {})[0]
+        const contextInfo = m.message?.[msgType]?.contextInfo
+        
+        // Deteksi apakah pesan diteruskan dari Saluran (Newsletter)
+        const isFromChannel = !!contextInfo?.forwardedNewsletterMessageInfo
+
+        if (!isFromChannel || !gcData || !botAdm) return !1
+
+        // Pastikan fitur anti-channel aktif di database grup
+        const isAntiChActive = gcData?.filter?.antich
+        if (!isAntiChActive) return !1
+
+        // Identifikasi ID dan Nomor Pengirim
+        const senderJid = m.key.participant || m.participant
+        const senderNum = senderJid.split('@')[0]
+
+        // Pengecekan Owner langsung dari config.json
+        let isOwner = false
+        try {
+          const configPath = path.join(dirname, '../set/config.json') 
+          const cfg = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
+          const ownerNums = cfg.ownerSetting?.ownerNumber || []
+          isOwner = ownerNums.includes(senderNum)
+        } catch (errConfig) {}
+
+        // Jika diteruskan dari saluran, BUKAN admin, dan BUKAN owner
+        if (isFromChannel && !usrAdm && !isOwner) {
+          
+          // Hapus pesannya
+          await xp.sendMessage(chat.id, { delete: m.key }).catch(() => {})
+
+          return !0 // Hentikan proses filter
+        }
+
+        return !1
+
+      } catch (e) {
+        console.error("❌ Error di fitur antiCh:", e)
+        return !1
+      }
+    },
+    
+    antiBadSticker: async () => {
+      try {
+        const isSticker = m.message?.stickerMessage
+        if (!isSticker || !isSticker.fileSha256 || !gcData || !botAdm) return !1
+
+        // Ambil daftar hash stiker terlarang
+        const badStickers = gcData?.filter?.badStickers || []
+        if (badStickers.length === 0) return !1
+
+        // Identifikasi ID dan Nomor Pengirim
+        const senderJid = m.key.participant || m.participant
+        const senderNum = senderJid.split('@')[0]
+        
+        // Pengecekan Whitelist (VVIP)
+        const whitelist = gcData?.filter?.whitelistSticker || []
+        const isWhitelisted = whitelist.includes(senderJid)
+
+        // Pengecekan Owner langsung dari config.json
+        let isOwner = false
+        try {
+          // Karena file ini di folder system, kita naik 1 folder (../) lalu ke set/config.json
+          // Sesuaikan '../set/config.json' menjadi './set/config.json' jika dirname kamu mengarah ke folder utama
+          const configPath = path.join(dirname, '../set/config.json') 
+          const cfg = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
+          const ownerNums = cfg.ownerSetting?.ownerNumber || []
+          
+          isOwner = ownerNums.includes(senderNum)
+        } catch (errConfig) {
+          console.error("Gagal membaca config.json:", errConfig.message)
+        }
+
+        // Ambil sidik jari (hash) stikernya
+        const stickerHash = Buffer.from(isSticker.fileSha256).toString('base64')
+
+        // Jika stiker dilarang, DAN pengirim BUKAN admin, BUKAN owner, DAN BUKAN whitelist
+        if (badStickers.includes(stickerHash) && !usrAdm && !isOwner && !isWhitelisted) {
+          
+          // Hapus stikernya
+          await xp.sendMessage(chat.id, { delete: m.key }).catch(() => {})
+          
+          // Peringatkan pelaku
+          await xp.sendMessage(chat.id, { 
+            text: `⚠️ @${senderNum} Kamu tidak memiliki izin untuk mengirim stiker tersebut di grup ini!`,
+            mentions: [senderJid]
+          }).catch(() => {})
+
+          return !0 // Hentikan proses filter
+        }
+
+        return !1
+
+      } catch (e) {
+        console.error("❌ Error di fitur antiBadSticker:", e)
+        return !1
+      }
+    },
 
     antiTagSw: async () => {
-      const txt = m.message?.groupStatusMentionMessage
-      if (!gcData || !botAdm) return
+      const isStatusMention = m.message?.groupStatusMentionMessage
+      if (!gcData || !botAdm) return !1
 
-      return (gcData?.filter?.antitagsw && botAdm && !usrAdm && txt)
-        ? await xp.sendMessage(chat.id, { delete: m.key }).catch(() => {})
-        : !1
+      // Jika fitur aktif, bot adalah admin, user BUKAN admin, dan pesan adalah Tag SW
+      if (gcData?.filter?.antitagsw && botAdm && !usrAdm && isStatusMention) {
+        // Ambil ID WhatsApp pelakunya
+        const senderJid = m.key.participant || m.participant
+
+        // 1. Hapus pesan Tag SW-nya
+        await xp.sendMessage(chat.id, { delete: m.key }).catch(() => {})
+
+        // 2. Beri pesan notifikasi ke grup (Opsional, biar member lain tahu)
+        await xp.sendMessage(chat.id, { 
+          text: `🚫 *ANTI TAG STATUS*\n\n@${senderJid.split('@')[0]} otomatis dikeluarkan dari grup karena mengirim Tag Status Broadcast.`,
+          mentions: [senderJid]
+        }).catch(() => {})
+
+        // 3. Kick (Keluarkan) pelakunya dari grup
+        await xp.groupParticipantsUpdate(chat.id, [senderJid], 'remove').catch(() => {})
+
+        return !0 // Menghentikan proses filter lain karena user sudah di-kick
+      }
+      
+      return !1
     },
 
     badword: async () => {

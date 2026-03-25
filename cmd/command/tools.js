@@ -4,12 +4,12 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import c from 'chalk'
+import util from 'util'
 import fetch from 'node-fetch'
 import { vn } from '../interactive.js'
 import { downloadMediaMessage } from 'baileys'
 import { processRemini } from '../../system/remini.js'; 
 import { tmpFiles } from '../../system/tmpfiles.js'
-import { fileTypeFromBuffer } from 'file-type'
 
 async function reactBoostReach(url, emoji){
   try {
@@ -92,6 +92,191 @@ export default function tools(ev) {
       } catch (e) {
         err(`error pada ${cmd}`, e)
         call(xp, e, m)
+      }
+    }
+  })
+
+  ev.on({
+    name: 'get url',
+    cmd: ['get', 'fetch', 'getapi'],
+    tags: 'Tools Menu',
+    desc: 'Melakukan HTTP GET request ke URL atau API',
+    owner: !1, // Bisa dipakai siapa saja (ubah !0 kalau mau khusus owner)
+    prefix: !0,
+    money: 10, // Biaya murah meriah
+    exp: 0.1,
+
+    run: async (xp, m, {
+      args,
+      chat,
+      cmd,
+      prefix
+    }) => {
+      try {
+        const url = args[0]
+
+        if (!url) {
+          return xp.sendMessage(chat.id, { 
+            text: `⚠️ *Format salah!*\n\nMasukkan URL API atau Website yang ingin di-get.\n\n💬 *Contoh:*\n${prefix}${cmd} https://api.github.com/users/petanikode` 
+          }, { quoted: m })
+        }
+
+        if (!/^https?:\/\//i.test(url)) {
+          return xp.sendMessage(chat.id, { 
+            text: '❌ URL tidak valid! Pastikan diawali dengan *http://* atau *https://*' 
+          }, { quoted: m })
+        }
+
+        // Reaksi loading
+        await xp.sendMessage(chat.id, { react: { text: '⏳', key: m.key } })
+
+        // Eksekusi request GET
+        const res = await axios.get(url, {
+          // Tambahkan User-Agent standar agar tidak ditolak oleh keamanan web (seperti Cloudflare)
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+          }
+        })
+
+        // Format hasil tangkapan
+        // Jika formatnya JSON (Object), kita susun rapi. Jika teks biasa/HTML, kita tampilkan apa adanya.
+        let resultText = typeof res.data === 'object' 
+          ? JSON.stringify(res.data, null, 2) 
+          : res.data.toString()
+
+        // Cegah pesan kepanjangan yang bisa bikin WA ngelag (Maksimal 3000 karakter)
+        if (resultText.length > 3000) {
+          resultText = resultText.substring(0, 3000) + '\n\n... ✂️ [Teks terlalu panjang, dipotong oleh sistem]'
+        }
+
+        // Kirim hasil
+        await xp.sendMessage(chat.id, { 
+          text: `🌐 *GET RESPONSE*\n🔗 *URL:* ${url}\n📊 *Status:* ${res.status} ${res.statusText}\n\n*Result:*\n\`\`\`json\n${resultText}\n\`\`\`` 
+        }, { quoted: m })
+
+        // Reaksi sukses
+        await xp.sendMessage(chat.id, { react: { text: '✅', key: m.key } })
+
+      } catch (e) {
+        // Tangkap error dari API (misal 404 Not Found atau 500 Server Error)
+        console.error(`Error pada command ${cmd}:`, e.message)
+        
+        const errStatus = e.response?.status || 'Unknown'
+        let errData = e.response?.data || e.message
+        
+        if (typeof errData === 'object') errData = JSON.stringify(errData, null, 2)
+        if (errData.length > 1000) errData = errData.substring(0, 1000) + '...'
+
+        await xp.sendMessage(chat.id, { react: { text: '❌', key: m.key } })
+        await xp.sendMessage(chat.id, { 
+          text: `❌ *GET FAILED*\n\n📊 *Status:* ${errStatus}\n*Response:*\n\`\`\`json\n${errData}\n\`\`\`` 
+        }, { quoted: m })
+      }
+    }
+  })
+  
+  ev.on({
+    name: 'web to apk',
+    cmd: ['web2apk', 'buildapk', 'createapk'],
+    tags: 'Tools Menu',
+    desc: 'Mengubah website menjadi aplikasi Android (APK)',
+    owner: !1,
+    prefix: !0,
+    money: 250, 
+    exp: 0.1,
+
+    run: async (xp, m, {
+      args,
+      chat,
+      cmd,
+      prefix
+    }) => {
+      try {
+        const text = args.join(' ').trim()
+        const q = m.message?.extendedTextMessage?.contextInfo?.quotedMessage
+        const isImageMsg = q?.imageMessage || m.message?.imageMessage
+
+        if (!text.includes('|') || !isImageMsg) {
+          return xp.sendMessage(chat.id, { 
+            text: `⚠️ *Format salah!*\n\nKirim/reply gambar (sebagai Ikon Aplikasi) dengan caption:\n${prefix}${cmd} URL Website | Nama Aplikasi\n\n💬 *Contoh:*\n${prefix}${cmd} https://www.google.com | Google App` 
+          }, { quoted: m })
+        }
+
+        const [url, appName] = text.split('|').map(v => v.trim())
+
+        if (!/^https?:\/\//i.test(url)) {
+          return xp.sendMessage(chat.id, { text: '❌ URL harus diawali dengan http:// atau https://' }, { quoted: m })
+        }
+
+        if (!appName) {
+          return xp.sendMessage(chat.id, { text: '❌ Nama aplikasi tidak boleh kosong.' }, { quoted: m })
+        }
+
+        await xp.sendMessage(chat.id, { react: { text: '⏳', key: m.key } })
+        await xp.sendMessage(chat.id, { text: '⏳ Sedang mem-build APK... Proses ini biasanya memakan waktu beberapa detik.' }, { quoted: m })
+
+        const buffer = await downloadMediaMessage({ message: q || m.message }, 'buffer')
+        if (!buffer) throw new Error('Gagal mengunduh gambar ikon.')
+
+        // Simpan Buffer ke file sementara
+        const tempDir = path.join(dirname, '../temp')
+        if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: !0 })
+        
+        const tempIconPath = path.join(tempDir, `icon_${Date.now()}.png`)
+        fs.writeFileSync(tempIconPath, buffer)
+
+        // ✨ PERBAIKAN: Panggil form-data secara spesifik untuk menghindari bentrok dengan FormData bawaan Node.js
+        const FormDataNode = (await import('form-data')).default
+        const form = new FormDataNode()
+
+        form.append('websiteUrl', url)
+        form.append('appName', appName)
+        form.append('icon', fs.createReadStream(tempIconPath))
+        
+        const cleanedName = appName.toLowerCase().replace(/[^a-z0-9]/g, '')
+        const packageName = `com.${cleanedName || 'app'}.web2apk`
+        
+        form.append('packageName', packageName)
+        form.append('versionName', '1.0.0')
+        form.append('versionCode', 1)
+
+        const response = await axios.post('https://webappcreator.amethystlab.org/api/build-apk', form, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36',
+            'Accept': 'application/json, text/plain, */*',
+            'Origin': 'https://webappcreator.amethystlab.org',
+            'Referer': 'https://webappcreator.amethystlab.org/',
+            ...form.getHeaders() // 👈 Sekarang ini dijamin tidak akan error
+          },
+          maxContentLength: Infinity,
+          maxBodyLength: Infinity
+        })
+
+        if (fs.existsSync(tempIconPath)) fs.unlinkSync(tempIconPath)
+
+        const data = response.data
+
+        if (!data.success) {
+           throw new Error(data.message || 'Gagal mem-build APK dari server.')
+        }
+
+        const downloadUrl = `https://webappcreator.amethystlab.org${data.downloadUrl}`
+
+        await xp.sendMessage(chat.id, {
+          document: { url: downloadUrl },
+          fileName: `${appName}.apk`,
+          mimetype: 'application/vnd.android.package-archive',
+          caption: `✅ *APK BERHASIL DIBUAT!*\n\n📱 *Nama:* ${appName}\n🌐 *Web:* ${url}\n📦 *Package:* ${packageName}\n\n> *Powered by ${global.botName || 'Alya'}*`
+        }, { quoted: m })
+
+        await xp.sendMessage(chat.id, { react: { text: '✅', key: m.key } })
+
+      } catch (e) {
+        console.error(`Error pada command ${cmd}:`, e)
+        await xp.sendMessage(chat.id, { react: { text: '❌', key: m.key } })
+        await xp.sendMessage(chat.id, { 
+          text: `❌ *GAGAL BUILD APK*\n\n💡 Pastikan gambar tidak terlalu besar atau URL website valid.\n📝 *Pesan Error:* ${e.response?.data?.message || e.message}` 
+        }, { quoted: m })
       }
     }
   })

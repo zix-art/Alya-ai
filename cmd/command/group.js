@@ -82,6 +82,54 @@ export default function group(ev) {
       }
     }
   })
+  
+  ev.on({
+    name: 'anti channel',
+    cmd: ['antiteksch'],
+    tags: 'Group Menu',
+    desc: 'Mencegah member meneruskan pesan dari Saluran (Channel)',
+    owner: !1,
+    prefix: !0,
+    money: 100,
+    exp: 0.1,
+
+    run: async (xp, m, { args, chat, cmd, prefix }) => {
+      try {
+        const gcData = getGc(chat)
+        const { usrAdm, botAdm } = await grupify(xp, m)
+
+        if (!chat.group || !gcData || !usrAdm || !botAdm) {
+          return xp.sendMessage(chat.id, { 
+            text: !chat.group ? 'Perintah ini hanya bisa dijalankan di grup' : 
+                  !gcData ? `Grup ini belum terdaftar, ketik ${prefix}daftargc` : 
+                  !usrAdm ? 'Kamu bukan admin' : 
+                  'Aku harus jadi admin dulu untuk menghapus pesan' 
+          }, { quoted: m })
+        }
+
+        const input = args[0]?.toLowerCase()
+        const opsi = !!gcData?.filter?.antich
+        const statusMode = opsi ? 'Aktif' : 'Tidak Aktif'
+
+        if (!input || !['on', 'off'].includes(input) || (input === 'on' && opsi) || (input === 'off' && !opsi)) {
+          return xp.sendMessage(chat.id, { 
+            text: `Gunakan:\n${prefix}${cmd} on/off\n\nStatus saat ini: *${statusMode}*` 
+          }, { quoted: m })
+        }
+
+        // Simpan ke database
+        gcData.filter.antich = input === 'on'
+        save.gc()
+
+        await xp.sendMessage(chat.id, { 
+          text: `✅ Fitur Anti-Channel berhasil di${input === 'on' ? 'aktifkan' : 'nonaktifkan'}.` 
+        }, { quoted: m })
+
+      } catch (e) {
+        console.error(`Error pada command ${cmd}:`, e)
+      }
+    }
+  })
 
   ev.on({
     name: 'anti ch',
@@ -303,6 +351,103 @@ export default function group(ev) {
       } catch (e) {
         err(`error pada ${cmd}`, e)
         call(xp, e, m)
+      }
+    }
+  })
+  
+    ev.on({
+    name: 'add bad sticker',
+    cmd: ['addbadsticker', 'blocksticker'],
+    tags: 'Group Menu',
+    desc: 'Melarang stiker tertentu di grup ini',
+    owner: !1,
+    prefix: !0,
+    money: 0,
+
+    run: async (xp, m, { chat, cmd, prefix }) => {
+      try {
+        const gcData = getGc(chat)
+        const { usrAdm } = await grupify(xp, m)
+
+        if (!chat.group || !usrAdm) {
+          return xp.sendMessage(chat.id, { text: 'Perintah ini hanya untuk Admin Grup.' }, { quoted: m })
+        }
+
+        const q = m.message?.extendedTextMessage?.contextInfo?.quotedMessage
+        const isQuotedSticker = q?.stickerMessage
+
+        if (!isQuotedSticker) {
+          return xp.sendMessage(chat.id, { text: `Reply stiker yang ingin dilarang dengan command ${prefix}${cmd}` }, { quoted: m })
+        }
+
+        // Ambil sidik jari (hash) stikernya
+        const stickerHash = Buffer.from(isQuotedSticker.fileSha256).toString('base64')
+
+        // Pastikan array badStickers sudah ada di database grup
+        if (!gcData.filter.badStickers) gcData.filter.badStickers = []
+
+        // Cek apakah stiker sudah ada di daftar
+        if (gcData.filter.badStickers.includes(stickerHash)) {
+          return xp.sendMessage(chat.id, { text: 'Stiker ini sudah masuk daftar larangan grup.' }, { quoted: m })
+        }
+
+        // Simpan hash ke database
+        gcData.filter.badStickers.push(stickerHash)
+        save.gc()
+
+        await xp.sendMessage(chat.id, { text: '✅ Stiker berhasil ditambahkan ke daftar larangan. Member biasa yang mengirim stiker ini akan otomatis dihapus pesannya.' }, { quoted: m })
+
+      } catch (e) {
+        console.error(`Error pada command ${cmd}:`, e)
+      }
+    }
+  })
+  
+  ev.on({
+    name: 'izin stiker',
+    cmd: ['izinstiker', 'addwhitelist'],
+    tags: 'Group Menu',
+    desc: 'Memberikan izin ke member untuk mengirim stiker terlarang',
+    owner: !1,
+    prefix: !0,
+    money: 0,
+
+    run: async (xp, m, { args, chat, cmd, prefix }) => {
+      try {
+        const gcData = getGc(chat)
+        const { usrAdm } = await grupify(xp, m)
+
+        // Hanya Admin atau Owner yang bisa pakai command ini
+        if (!chat.group || (!usrAdm && !own(m))) {
+          return xp.sendMessage(chat.id, { text: 'Hanya Admin/Owner yang bisa menggunakan perintah ini.' }, { quoted: m })
+        }
+
+        const quoted = m.message?.extendedTextMessage?.contextInfo
+        const targetRaw = quoted?.participant || quoted?.mentionedJid?.[0] || (args[0] ? global.number(args[0]) + '@s.whatsapp.net' : null)
+
+        if (!targetRaw) {
+          return xp.sendMessage(chat.id, { text: `Tag/reply/masukkan nomor target.\nContoh: ${prefix}${cmd} @member` }, { quoted: m })
+        }
+
+        // Pastikan array whitelist sudah ada
+        if (!gcData.filter.whitelistSticker) gcData.filter.whitelistSticker = []
+
+        // Cek apakah nomor sudah ada di daftar
+        if (gcData.filter.whitelistSticker.includes(targetRaw)) {
+          return xp.sendMessage(chat.id, { text: 'Nomor ini sudah ada di daftar izin stiker.' }, { quoted: m })
+        }
+
+        // Simpan nomor ke database grup
+        gcData.filter.whitelistSticker.push(targetRaw)
+        save.gc()
+
+        await xp.sendMessage(chat.id, { 
+          text: `✅ Berhasil! @${targetRaw.split('@')[0]} sekarang memiliki VVIP Pass untuk mengirim stiker terlarang di grup ini.`, 
+          mentions: [targetRaw] 
+        }, { quoted: m })
+
+      } catch (e) {
+        console.error(`Error pada command ${cmd}:`, e)
       }
     }
   })
@@ -986,6 +1131,73 @@ export default function group(ev) {
       }
     }
   })
+  
+  ev.on({
+    name: 'pin message',
+    cmd: ['pin', 'sematkan', 'unpin', 'lepaskan'],
+    tags: 'Group Menu',
+    desc: 'Menyematkan (pin) atau melepas pin pesan di obrolan',
+    owner: !1,
+    prefix: !0,
+    money: 0,
+    exp: 0.1,
+
+    run: async (xp, m, { chat, cmd, prefix }) => {
+      try {
+        const { usrAdm, botAdm } = await grupify(xp, m)
+
+        // Pengecekan standar grup & admin
+        if (!chat.group) {
+          return xp.sendMessage(chat.id, { text: '❌ Perintah ini hanya bisa digunakan di dalam grup.' }, { quoted: m })
+        }
+        if (!usrAdm && !global.ownerNumber.includes(m.sender.split('@')[0])) {
+          return xp.sendMessage(chat.id, { text: '❌ Hanya Admin Grup yang bisa menggunakan perintah ini.' }, { quoted: m })
+        }
+        if (!botAdm) {
+          return xp.sendMessage(chat.id, { text: '❌ Aku harus menjadi Admin terlebih dahulu untuk bisa menyematkan pesan.' }, { quoted: m })
+        }
+
+        // Cari pesan yang di-reply
+        const q = m.message?.extendedTextMessage?.contextInfo
+        if (!q || !q.stanzaId) {
+          return xp.sendMessage(chat.id, { 
+            text: `⚠️ *Format salah!*\n\nReply/balas pesan yang ingin di-pin/unpin dengan perintah:\n${prefix}${cmd}` 
+          }, { quoted: m })
+        }
+
+        // Reaksi loading
+        await xp.sendMessage(chat.id, { react: { text: '⏳', key: m.key } })
+
+        // Susun Kunci (Key) dari pesan yang di-reply
+        const botNumber = xp.user.id.split(':')[0] + '@s.whatsapp.net'
+        const quotedKey = {
+          remoteJid: chat.id,
+          fromMe: q.participant === botNumber, 
+          id: q.stanzaId,
+          participant: q.participant
+        }
+
+        const isPin = cmd === 'pin' || cmd === 'sematkan'
+        const actionType = isPin ? 1 : 2 
+
+        // Eksekusi perintah ke server WhatsApp
+        await xp.sendMessage(chat.id, {
+          pin: quotedKey,
+          type: actionType,
+          time: 2592000 // Durasi Pin: 30 Hari
+        })
+
+        // Reaksi sukses (TIDAK ADA KIRIM PESAN TEKS)
+        await xp.sendMessage(chat.id, { react: { text: '✅', key: m.key } })
+
+      } catch (e) {
+        console.error(`Error pada command ${cmd}:`, e)
+        // Kalau error tetap kirim pesan biar ketahuan
+        await xp.sendMessage(chat.id, { react: { text: '❌', key: m.key } })
+        await xp.sendMessage(chat.id, { text: `❌ Gagal memproses. Pastikan pesan tersebut belum dihapus atau ditarik.` }, { quoted: m })
+      }
+    }
+  })
 
   ev.on({
     name: 'set pp gc',
@@ -1021,6 +1233,80 @@ export default function group(ev) {
       } catch (e) {
         err(`error pada ${cmd}`, e)
         call(xp, e, m)
+      }
+    }
+  })
+  
+    ev.on({
+    name: 'acc join',
+    cmd: ['acc', 'terima', 'accjoin', 'approve'],
+    tags: 'Group Menu',
+    desc: 'Menyetujui permintaan bergabung ke dalam grup',
+    owner: !1,
+    prefix: !0,
+    money: 0,
+    exp: 0.1,
+
+    run: async (xp, m, { args, chat, cmd, prefix }) => {
+      try {
+        const { usrAdm, botAdm } = await grupify(xp, m)
+
+        // Pengecekan standar grup & admin
+        if (!chat.group) {
+          return xp.sendMessage(chat.id, { text: '❌ Perintah ini hanya bisa digunakan di dalam grup.' }, { quoted: m })
+        }
+        if (!usrAdm && !global.ownerNumber.includes(m.sender.split('@')[0])) {
+          return xp.sendMessage(chat.id, { text: '❌ Hanya Admin Grup yang bisa menggunakan perintah ini.' }, { quoted: m })
+        }
+        if (!botAdm) {
+          return xp.sendMessage(chat.id, { text: '❌ Aku harus menjadi Admin terlebih dahulu untuk bisa menyetujui member.' }, { quoted: m })
+        }
+
+        // Reaksi loading
+        await xp.sendMessage(chat.id, { react: { text: '⏳', key: m.key } })
+
+        // 1. Ambil daftar orang yang meminta bergabung
+        let pendingList = []
+        try {
+          pendingList = await xp.groupRequestParticipantsList(chat.id)
+        } catch (err) {
+          return xp.sendMessage(chat.id, { text: '❌ Fitur "Persetujuan Admin untuk Bergabung" sepertinya tidak aktif di grup ini, atau terjadi kesalahan.' }, { quoted: m })
+        }
+
+        // 2. Jika tidak ada yang mengantre
+        if (!pendingList || pendingList.length === 0) {
+          await xp.sendMessage(chat.id, { react: { text: 'ℹ️', key: m.key } })
+          return xp.sendMessage(chat.id, { text: 'ℹ️ Tidak ada permintaan bergabung yang tertunda saat ini.' }, { quoted: m })
+        }
+
+        // 3. Tentukan jumlah yang ingin di-ACC
+        let targetCount = pendingList.length // Default: ACC Semua
+        
+        // Jika ada input angka (misal .acc 10)
+        if (args[0] && !isNaN(args[0])) {
+          const inputNum = parseInt(args[0])
+          if (inputNum > 0) {
+            targetCount = Math.min(inputNum, pendingList.length) // Jangan melebihi jumlah antrean yang ada
+          }
+        }
+
+        // 4. Potong daftar antrean sesuai jumlah target, lalu ambil JID (ID WhatsApp) mereka
+        const jidsToApprove = pendingList.slice(0, targetCount).map(req => req.jid)
+
+        // 5. Eksekusi persetujuan (Approve)
+        await xp.groupRequestParticipantsUpdate(chat.id, jidsToApprove, 'approve')
+
+        // 6. Kirim laporan berhasil
+        await xp.sendMessage(chat.id, { 
+          text: `✅ *BERHASIL!*\n\nTelah menyetujui *${jidsToApprove.length}* permintaan bergabung ke dalam grup.\n*(Sisa antrean: ${pendingList.length - jidsToApprove.length})*` 
+        }, { quoted: m })
+        
+        await xp.sendMessage(chat.id, { react: { text: '✅', key: m.key } })
+
+      } catch (e) {
+        console.error(`Error pada command ${cmd}:`, e)
+        await xp.sendMessage(chat.id, { react: { text: '❌', key: m.key } })
+        await xp.sendMessage(chat.id, { text: `❌ Terjadi kesalahan saat mencoba menyetujui permintaan bergabung.` }, { quoted: m })
       }
     }
   })

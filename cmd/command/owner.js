@@ -49,7 +49,135 @@ export default function owner(ev) {
       }
     }
   })
+  
+  ev.on({
+    name: 'get sw',
+    cmd: ['getsw', 'curisw', 'swget'],
+    tags: 'Owner Menu',
+    desc: 'Melihat atau mengambil Status WA (SW) orang lain dari memori bot',
+    owner: !0, 
+    prefix: !0,
+    money: 0,
+    exp: 0,
 
+    run: async (xp, m, { args, chat, prefix, cmd }) => {
+      try {
+        const memStore = typeof store !== 'undefined' ? store : global.store
+        
+        // ✨ PERBAIKAN: Gunakan opsional chaining (?.) agar aman dari crash
+        const swStore = memStore?.messages?.['status@broadcast']
+        
+        if (!swStore) {
+           return xp.sendMessage(chat.id, { text: '❌ Belum ada Status WA yang masuk/terekam di memori bot saat ini.' }, { quoted: m })
+        }
+
+        // Di Baileys, data memori kadang berbentuk array langsung, kadang ada di dalam .array
+        const swData = swStore.array || swStore || []
+
+        if (swData.length === 0) {
+          return xp.sendMessage(chat.id, { text: '❌ Belum ada Status WA yang masuk/terekam.' }, { quoted: m })
+        }
+
+        const targetInput = args[0]
+        
+        // JIKA TANPA ARGUMEN: Tampilkan daftar orang yang bikin SW
+        if (!targetInput) {
+          const swUsers = [...new Set(swData.map(v => v.key.participant))]
+          
+          let txt = `📊 *DAFTAR STATUS WA TEREKAM*\nTotal: *${swData.length}* Status dari *${swUsers.length}* Orang\n\n`
+          swUsers.forEach((jid, i) => {
+             txt += `*${i + 1}.* @${jid.split('@')[0]}\n`
+          })
+          txt += `\n💬 *Cara Melihat:*\nKetik *${prefix}${cmd} nomor_urut* atau *nomor_hp*\n\n📌 *Contoh:*\n${prefix}${cmd} 1\n${prefix}${cmd} 62812xxx`
+
+          return xp.sendMessage(chat.id, { text: txt, mentions: swUsers }, { quoted: m })
+        }
+
+        // JIKA ADA ARGUMEN: Cari targetnya
+        let targetJid = ''
+        const swUsers = [...new Set(swData.map(v => v.key.participant))]
+
+        if (!isNaN(targetInput) && targetInput.length <= 3) {
+          const index = parseInt(targetInput) - 1
+          if (swUsers[index]) targetJid = swUsers[index]
+        } else {
+          const q = m.message?.extendedTextMessage?.contextInfo
+          targetJid = q?.participant || q?.mentionedJid?.[0]
+          
+          if (!targetJid) {
+            let num = targetInput.replace(/[^0-9]/g, '')
+            if (num.startsWith('0')) num = '62' + num.slice(1)
+            targetJid = num + '@s.whatsapp.net'
+          }
+        }
+
+        if (!targetJid) return xp.sendMessage(chat.id, { text: '❌ Target tidak valid!' }, { quoted: m })
+
+        // Saring semua status hanya dari target tersebut
+        const userStatuses = swData.filter(v => v.key.participant === targetJid)
+        
+        if (userStatuses.length === 0) {
+          return xp.sendMessage(chat.id, { 
+            text: `❌ Tidak menemukan Status WA dari @${targetJid.split('@')[0]} di memori saat ini.`, 
+            mentions: [targetJid] 
+          }, { quoted: m })
+        }
+
+        await xp.sendMessage(chat.id, { react: { text: '⏳', key: m.key } })
+
+        let successCount = 0
+        for (let statusMsg of userStatuses) {
+          if (!statusMsg.message) continue
+          await xp.sendMessage(chat.id, { forward: statusMsg }).catch(() => {})
+          successCount++
+        }
+
+        await xp.sendMessage(chat.id, { react: { text: '✅', key: m.key } })
+        
+        if (successCount > 0 && chat.group) {
+           await xp.sendMessage(chat.id, { text: `✅ Berhasil mengambil *${successCount}* Status WA dari target.` }, { quoted: m })
+        }
+
+      } catch (e) {
+        console.error(`Error pada command ${cmd}:`, e)
+        await xp.sendMessage(chat.id, { react: { text: '❌', key: m.key } })
+        await xp.sendMessage(chat.id, { text: `❌ Gagal memproses data SW.` }, { quoted: m })
+      }
+    }
+  })
+  
+  ev.on({
+    name: 'clear chat',
+    cmd: ['clearchat', 'bersihkan', 'clear'],
+    tags: 'Owner Menu',
+    desc: 'Membersihkan riwayat chat ini dari database bot',
+    owner: !0, // WAJIB !0 (Hanya Owner yang bisa pakai)
+    prefix: !0,
+    money: 0,
+    exp: 0,
+
+    run: async (xp, m, { chat, cmd }) => {
+      try {
+        // Kasih reaksi loading dulu
+        await xp.sendMessage(chat.id, { react: { text: '⏳', key: m.key } })
+
+        // Perintah ke sistem WhatsApp untuk menghapus (Clear Chat) obrolan ini dari sisi bot
+        await xp.chatModify({
+          delete: true,
+          lastMessages: [{ key: m.key, messageTimestamp: m.messageTimestamp }]
+        }, chat.id)
+
+        // Karena chatnya sudah terhapus, reaksi sukses mungkin tidak terlihat di HP bot, 
+        // tapi kita kirim saja sebagai formalitas
+        await xp.sendMessage(chat.id, { react: { text: '✅', key: m.key } }).catch(() => {})
+
+      } catch (e) {
+        console.error(`Error pada command ${cmd}:`, e)
+        await xp.sendMessage(chat.id, { react: { text: '❌', key: m.key } }).catch(() => {})
+      }
+    }
+  })
+  
   ev.on({
     name: 'add money',
     cmd: ['addmoney', 'adduang'],
@@ -67,25 +195,40 @@ export default function owner(ev) {
       prefix
     }) => {
       try {
-        if (!chat.group) return xp.sendMessage(chat.id, { text: 'perintah ini hanya bisa digunakan digrup' }, { quoted: m })
+        // Dihapus/comment biar bisa dipakai di Private Chat juga
+        // if (!chat.group) return xp.sendMessage(chat.id, { text: 'perintah ini hanya bisa digunakan digrup' }, { quoted: m })
 
-        const quoted = m.message?.extendedTextMessage?.contextInfo,
-              target = quoted?.participant || quoted?.mentionedJid?.[0]
+        const quoted = m.message?.extendedTextMessage?.contextInfo
+        let target = quoted?.participant || quoted?.mentionedJid?.[0]
 
-        if (!target) return xp.sendMessage(chat.id, { text: `reply/tag target\ncontoh: ${prefix}${cmd} @pengguna/reply 10000` }, { quoted: m })
+        // FITUR BARU: Deteksi nomor manual dari teks (kalau nggak ada tag/reply)
+        if (!target && args.length > 0) {
+          let numStr = args[0].replace(/[^0-9]/g, '') // Ambil angka saja
+          if (numStr.startsWith('0')) numStr = '62' + numStr.slice(1) // Ubah 08 jadi 628
+          
+          if (numStr.length >= 9) {
+            target = numStr + '@s.whatsapp.net'
+          }
+        }
 
-        const userDb = Object.values(db().key).find(u => u.jid === target),
-              nominal = Number(args[1]) || Number(args[0]),
-              mention = target.replace(/@s\.whatsapp\.net$/, '')
+        if (!target) return xp.sendMessage(chat.id, { text: `reply/tag/masukkan nomor target\n\ncontoh:\n${prefix}${cmd} @pengguna 10000\n${prefix}${cmd} 62888xxx 10000` }, { quoted: m })
+
+        // Ambil nominal selalu dari argumen paling belakang (biar aman kalau pakai nomor)
+        const nominal = Number(args[args.length - 1])
 
         if (!nominal || nominal < 1) return xp.sendMessage(chat.id, { text: 'nominal tidak valid' }, { quoted: m })
 
+        const userDb = Object.values(db().key).find(u => u.jid === target),
+              mention = target.replace(/@s\.whatsapp\.net$/, '')
+
         if (!userDb) return xp.sendMessage(chat.id, { text: 'pengguna belum terdaftar' }, { quoted: m })
 
-        userDb.moneyDb.moneyInBank += nominal
+        // PERBAIKAN: Masukkan ke dompet utama (money), bukan bank
+        // Pastikan key untuk dompet tunai di bot kamu adalah "money"
+        userDb.moneyDb.money = (userDb.moneyDb.money || 0) + nominal
         save.db()
 
-        await xp.sendMessage(chat.id, { text: `Rp ${nominal.toLocaleString('id-ID')} berhasil ditambahkan ke bank @${mention}`, mentions: [target] }, { quoted: m })
+        await xp.sendMessage(chat.id, { text: `Rp ${nominal.toLocaleString('id-ID')} berhasil ditambahkan ke dompet @${mention}\n\nUang sekarang bisa digunakan untuk fitur.`, mentions: [target] }, { quoted: m })
       } catch (e) {
         err(`error pada ${cmd}`, e)
         call(xp, e, m)

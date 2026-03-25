@@ -49,13 +49,42 @@
         "welcome": {
           "welcomeGc": false,
           "welcomeText": ""
-        }
+        },
+        "badStickers": [
+          "vB7NTU70G8W2kAKVGmPH/veoMyJjOlyZ8FIOSPe5BE8="
+        ]
       }
     },
     "𖤍 𝗖𝗛𝗔𝗧 𝗕𝗢𝗧 || 𝗬𝗨𝗜 [ 모든 왓츠앱 봇 ] 𖤍": {
       "id": "120363328909338947@g.us",
       "ban": false,
       "member": 46,
+      "filter": {
+        "mute": false,
+        "antilink": false,
+        "antitagsw": false,
+        "antich": false,
+        "autoback": false,
+        "antitagall": false,
+        "blacklist": [],
+        "badword": {
+          "antibadword": false,
+          "badwordtext": []
+        },
+        "left": {
+          "leftGc": false,
+          "leftText": ""
+        },
+        "welcome": {
+          "welcomeGc": false,
+          "welcomeText": ""
+        }
+      }
+    },
+    "ALL OWN ZIX🥶": {
+      "id": "120363406768138955@g.us",
+      "ban": false,
+      "member": 5,
       "filter": {
         "mute": false,
         "antilink": false,

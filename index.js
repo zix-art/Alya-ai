@@ -95,7 +95,6 @@ const startBot = async () => {
         
         if (m.key && !m.key.fromMe) {
           await xp.readMessages([m.key]).catch(() => {})
-        
         }
 
         const chat = global.chat(m, botName),
@@ -146,7 +145,9 @@ const startBot = async () => {
           ft = await filter(xp, m, text)
           ft && (
             ft.antiLink(),
-            ft.antiTagSw(),
+            ft.antiTagSw(), // 👈 Disesuaikan (A besar)
+            ft.antiCh(),
+            ft.antiBadSticker(), // 👈 Filter Stiker Terlarang dijalankan di sini
             ft.badword(),
             ft.antiCh(),
             ft.antitag()
