@@ -1,0 +1,32 @@
+# 📦 Dependensi Node.js (Biar gak berat pas di-push)
+node_modules/
+package-lock.json
+yarn.lock
+
+# 🔐 Folder Sesi Baileys & Jadibot (SANGAT WAJIB BIAR WA LU GAK DIHACK)
+connect/session/
+connect/[0-9]*/
+
+# 🗑️ Folder Temporary / File Sampah Hasil Convert FFmpeg
+temp/
+*.tmp
+*.log
+
+# 🗂️ Database Lokal (Biar data user, uang, & grup lu gak ke-ekspos publik)
+system/db/database.json
+system/db/datagc.json
+system/db/datagame.json
+system/db/bank.json
+
+# 🔑 File Rahasia / API Key
+# Hilangkan tanda pagar (#) di bawah ini kalo lu gak mau config.json lu ke-upload
+# system/set/config.json
+
+# 🐛 Log Error NPM / Yarn
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 🖥️ File sampah bawaan OS (Windows/Mac)
+.DS_Store
+Thumbs.db
