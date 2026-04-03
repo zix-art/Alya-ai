@@ -51,102 +51,6 @@ export default function owner(ev) {
   })
   
   ev.on({
-    name: 'get sw',
-    cmd: ['getsw', 'curisw', 'swget'],
-    tags: 'Owner Menu',
-    desc: 'Melihat atau mengambil Status WA (SW) orang lain dari memori bot',
-    owner: !0, 
-    prefix: !0,
-    money: 0,
-    exp: 0,
-
-    run: async (xp, m, { args, chat, prefix, cmd }) => {
-      try {
-        const memStore = typeof store !== 'undefined' ? store : global.store
-        
-        // ✨ PERBAIKAN: Gunakan opsional chaining (?.) agar aman dari crash
-        const swStore = memStore?.messages?.['status@broadcast']
-        
-        if (!swStore) {
-           return xp.sendMessage(chat.id, { text: '❌ Belum ada Status WA yang masuk/terekam di memori bot saat ini.' }, { quoted: m })
-        }
-
-        // Di Baileys, data memori kadang berbentuk array langsung, kadang ada di dalam .array
-        const swData = swStore.array || swStore || []
-
-        if (swData.length === 0) {
-          return xp.sendMessage(chat.id, { text: '❌ Belum ada Status WA yang masuk/terekam.' }, { quoted: m })
-        }
-
-        const targetInput = args[0]
-        
-        // JIKA TANPA ARGUMEN: Tampilkan daftar orang yang bikin SW
-        if (!targetInput) {
-          const swUsers = [...new Set(swData.map(v => v.key.participant))]
-          
-          let txt = `📊 *DAFTAR STATUS WA TEREKAM*\nTotal: *${swData.length}* Status dari *${swUsers.length}* Orang\n\n`
-          swUsers.forEach((jid, i) => {
-             txt += `*${i + 1}.* @${jid.split('@')[0]}\n`
-          })
-          txt += `\n💬 *Cara Melihat:*\nKetik *${prefix}${cmd} nomor_urut* atau *nomor_hp*\n\n📌 *Contoh:*\n${prefix}${cmd} 1\n${prefix}${cmd} 62812xxx`
-
-          return xp.sendMessage(chat.id, { text: txt, mentions: swUsers }, { quoted: m })
-        }
-
-        // JIKA ADA ARGUMEN: Cari targetnya
-        let targetJid = ''
-        const swUsers = [...new Set(swData.map(v => v.key.participant))]
-
-        if (!isNaN(targetInput) && targetInput.length <= 3) {
-          const index = parseInt(targetInput) - 1
-          if (swUsers[index]) targetJid = swUsers[index]
-        } else {
-          const q = m.message?.extendedTextMessage?.contextInfo
-          targetJid = q?.participant || q?.mentionedJid?.[0]
-          
-          if (!targetJid) {
-            let num = targetInput.replace(/[^0-9]/g, '')
-            if (num.startsWith('0')) num = '62' + num.slice(1)
-            targetJid = num + '@s.whatsapp.net'
-          }
-        }
-
-        if (!targetJid) return xp.sendMessage(chat.id, { text: '❌ Target tidak valid!' }, { quoted: m })
-
-        // Saring semua status hanya dari target tersebut
-        const userStatuses = swData.filter(v => v.key.participant === targetJid)
-        
-        if (userStatuses.length === 0) {
-          return xp.sendMessage(chat.id, { 
-            text: `❌ Tidak menemukan Status WA dari @${targetJid.split('@')[0]} di memori saat ini.`, 
-            mentions: [targetJid] 
-          }, { quoted: m })
-        }
-
-        await xp.sendMessage(chat.id, { react: { text: '⏳', key: m.key } })
-
-        let successCount = 0
-        for (let statusMsg of userStatuses) {
-          if (!statusMsg.message) continue
-          await xp.sendMessage(chat.id, { forward: statusMsg }).catch(() => {})
-          successCount++
-        }
-
-        await xp.sendMessage(chat.id, { react: { text: '✅', key: m.key } })
-        
-        if (successCount > 0 && chat.group) {
-           await xp.sendMessage(chat.id, { text: `✅ Berhasil mengambil *${successCount}* Status WA dari target.` }, { quoted: m })
-        }
-
-      } catch (e) {
-        console.error(`Error pada command ${cmd}:`, e)
-        await xp.sendMessage(chat.id, { react: { text: '❌', key: m.key } })
-        await xp.sendMessage(chat.id, { text: `❌ Gagal memproses data SW.` }, { quoted: m })
-      }
-    }
-  })
-  
-  ev.on({
     name: 'clear chat',
     cmd: ['clearchat', 'bersihkan', 'clear'],
     tags: 'Owner Menu',
@@ -185,7 +89,7 @@ export default function owner(ev) {
     desc: 'menambahkan uang ke target',
     owner: !0,
     prefix: !0,
-    money: 1,
+    money: 0,
     exp: 0.1,
 
     run: async (xp, m, {

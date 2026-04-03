@@ -10,8 +10,7 @@ const database = path.join(dirname, 'database.json'),
       datagame = path.join(dirname, 'datagame.json'),
       bankdb = path.join(dirname, 'bank.json')
 
-let saving = Promise.resolve(),
-    init = (() => {
+let init = (() => {
   const load = (file, def = { key: {} }) => {
     if (!fs.existsSync(file))
       return fs.writeFileSync(file, JSON.stringify(def, null, 2)), def
@@ -46,52 +45,40 @@ const getUsr = jid => Object.values(db().key).find(u => u.jid === jid)
 
 const getGc = chat => gc()?.key && Object.values(gc().key).find(g => String(g?.id) === String(chat.id)) || null
 
+// ==========================================
+// OPTIMASI DATABASE: Auto-Save Interval
+// ==========================================
+let needSaveDb = !1,
+    needSaveGc = !1,
+    needSaveGm = !1
+
 const save = {
-  db() {
-    saving = saving.then(async () => {
-      try {
-        await fs.promises.writeFile(
-          database,
-          JSON.stringify(init.db, null, 2)
-        )
-      } catch (e) {
-        console.error('error pada save.db', e)
-        erl(e, 'save.db')
-      }
-    })
-    return saving
-  },
-
-  gm() {
-    saving = saving.then(async () => {
-      try {
-        await fs.promises.writeFile(
-          datagame,
-          JSON.stringify(init.gm, null, 2)
-        )
-      } catch (e) {
-        console.error('error pada save.gm', e)
-        erl(e, 'save.gm')
-      }
-    })
-    return saving
-  },
-
-  gc() {
-    saving = saving.then(async () => {
-      try {
-        await fs.promises.writeFile(
-          dataGc,
-          JSON.stringify(init.gc, null, 2)
-        )
-      } catch (e) {
-        console.log('error pada save.gc', e)
-        erl(e, 'save.gc')
-      }
-    })
-    return saving
-  }
+  db() { needSaveDb = !0 },
+  gc() { needSaveGc = !0 },
+  gm() { needSaveGm = !0 }
 }
+
+setInterval(async () => {
+  if (needSaveDb) {
+    try {
+      await fs.promises.writeFile(database, JSON.stringify(init.db, null, 2))
+      needSaveDb = !1
+    } catch (e) { if(typeof erl !== 'undefined') erl(e, 'save.db') }
+  }
+  if (needSaveGc) {
+    try {
+      await fs.promises.writeFile(dataGc, JSON.stringify(init.gc, null, 2))
+      needSaveGc = !1
+    } catch (e) { if(typeof erl !== 'undefined') erl(e, 'save.gc') }
+  }
+  if (needSaveGm) {
+    try {
+      await fs.promises.writeFile(datagame, JSON.stringify(init.gm, null, 2))
+      needSaveGm = !1
+    } catch (e) { if(typeof erl !== 'undefined') erl(e, 'save.gm') }
+  }
+}, 60000) 
+// ==========================================
 
 const listRole = [
   'Gak Kenal',

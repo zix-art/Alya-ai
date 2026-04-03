@@ -4,6 +4,101 @@ import qs from 'qs'
 
 export default function download(ev) {
   ev.on({
+    name: 'soundcloud',
+    cmd: ['soundcloud', 'scdl'],
+    tags: 'Download Menu',
+    desc: 'Mendownload lagu dari SoundCloud',
+    owner: !1, 
+    prefix: !0,
+    money: 20, // Kasih biaya dikit karena ngirim audio lumayan berat
+    exp: 0.1,
+
+    run: async (xp, m, { args, chat, cmd, prefix }) => {
+      try {
+        const url = args[0]
+
+        if (!url) {
+          return xp.sendMessage(chat.id, { 
+            text: `⚠️ *Format salah!*\n\nMasukkan link SoundCloud yang ingin didownload.\n\n💬 *Contoh:*\n${prefix}${cmd} https://soundcloud.com/featherfan/peterpan-mimpi-yang-sempurna` 
+          }, { quoted: m })
+        }
+
+        if (!url.includes('soundcloud.com')) {
+          return xp.sendMessage(chat.id, { text: '❌ Link tidak valid! Pastikan itu adalah link dari SoundCloud.' }, { quoted: m })
+        }
+
+        await xp.sendMessage(chat.id, { react: { text: '⏳', key: m.key } })
+
+        // Fungsi Scraper dari Fruatre Maou (Dimasukkan ke dalam blok agar rapi)
+        const getSoundcloud = async (scUrl) => {
+          return new Promise(async (resolve, reject) => {
+            try {
+              let init = await axios.get('https://p.savenow.to/ajax/download.php', {
+                params: { format: 'mp3', url: scUrl, api: 'dfcb6d76f2f6a9894gjkege8a4ab232222' },
+                headers: {
+                  'User-Agent': 'Mozilla/5.0',
+                  'Referer': 'https://soundcloudrips.com/enUe/'
+                }
+              })
+
+              if (!init.data || !init.data.success) return reject('Gagal menginisiasi server unduhan')
+              
+              let { id, progress_url, info } = init.data
+              let done = false
+              let result
+
+              // Sistem polling (menunggu sampai progres server 100%)
+              while (!done) {
+                let prog = await axios.get(progress_url)
+                let data = prog.data
+                if (data.progress >= 1000 && data.download_url) {
+                  result = data
+                  done = true
+                } else {
+                  await new Promise(r => setTimeout(r, 1500)) // Jeda 1.5 detik
+                }
+              }
+
+              resolve({
+                title: info.title,
+                thumbnail: info.image,
+                download: result.download_url
+              })
+            } catch (e) {
+              reject(e)
+            }
+          })
+        }
+
+        // Eksekusi fungsi scrapernya
+        const result = await getSoundcloud(url)
+
+        // 1. Kirim Thumbnail & Info Lagu
+        await xp.sendMessage(chat.id, {
+          image: { url: result.thumbnail },
+          caption: `🎵 *SOUNDCLOUD DOWNLOADER*\n\n📌 *Judul:* ${result.title}\n\n_⏳ Sedang mengirim file audio, mohon tunggu sebentar..._`
+        }, { quoted: m })
+
+        // 2. Kirim File Audionya
+        await xp.sendMessage(chat.id, {
+          audio: { url: result.download },
+          mimetype: 'audio/mpeg',
+          fileName: `${result.title}.mp3`
+        }, { quoted: m })
+
+        await xp.sendMessage(chat.id, { react: { text: '✅', key: m.key } })
+
+      } catch (e) {
+        console.error(`Error pada command ${cmd}:`, e)
+        await xp.sendMessage(chat.id, { react: { text: '❌', key: m.key } })
+        await xp.sendMessage(chat.id, { 
+          text: `❌ *GAGAL DOWNLOAD*\n\nLagu mungkin diprivasi atau link tidak valid.\n📝 *Detail:* ${e.message || e}` 
+        }, { quoted: m })
+      }
+    }
+  })
+
+  ev.on({
     name: 'fb',
     cmd: ['fb', 'facebook'],
     tags: 'Download Menu',
@@ -437,4 +532,4 @@ export default function download(ev) {
       }
     }
   })
-}
+}	

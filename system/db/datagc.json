@@ -27,14 +27,14 @@
       }
     },
     "y": {
-      "id": "120363406655795919@g.us",
+      "id": "120363406454826943@g.us",
       "ban": false,
-      "member": 3,
+      "member": 2,
       "filter": {
         "mute": false,
-        "antilink": true,
-        "antitagsw": true,
-        "antich": true,
+        "antilink": false,
+        "antitagsw": false,
+        "antich": false,
         "autoback": false,
         "antitagall": false,
         "blacklist": [],
@@ -49,10 +49,7 @@
         "welcome": {
           "welcomeGc": false,
           "welcomeText": ""
-        },
-        "badStickers": [
-          "vB7NTU70G8W2kAKVGmPH/veoMyJjOlyZ8FIOSPe5BE8="
-        ]
+        }
       }
     },
     "𖤍 𝗖𝗛𝗔𝗧 𝗕𝗢𝗧 || 𝗬𝗨𝗜 [ 모든 왓츠앱 봇 ] 𖤍": {
@@ -87,6 +84,32 @@
       "member": 5,
       "filter": {
         "mute": false,
+        "antilink": false,
+        "antitagsw": false,
+        "antich": false,
+        "autoback": false,
+        "antitagall": false,
+        "blacklist": [],
+        "badword": {
+          "antibadword": false,
+          "badwordtext": []
+        },
+        "left": {
+          "leftGc": false,
+          "leftText": ""
+        },
+        "welcome": {
+          "welcomeGc": false,
+          "welcomeText": ""
+        }
+      }
+    },
+    "𝑱𝑼𝑺𝑻 𝑯𝑨𝑽𝑬 𝑭𝑼𝑵𝑵": {
+      "id": "120363425030847512@g.us",
+      "ban": false,
+      "member": 149,
+      "filter": {
+        "mute": true,
         "antilink": false,
         "antitagsw": false,
         "antich": false,

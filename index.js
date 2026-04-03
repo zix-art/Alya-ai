@@ -224,3 +224,9 @@ const startBot = async () => {
 
 startBot()
 await loadAll()
+process.on('uncaughtException', function (err) {
+  console.error('Terjadi Error (Tertahan):', err.message)
+})
+process.on('unhandledRejection', function (err) {
+  console.error('Promise Error (Tertahan):', err.message)
+})

@@ -743,6 +743,71 @@ export default function group(ev) {
       }
     }
   })
+  
+  ev.on({
+    name: 'hidetag v2',
+    cmd: ['hv2', 'hidetagv2'],
+    tags: 'Group Menu',
+    desc: 'tag all member Tanpa Pengecekan Admin (Fast Mode)',
+    owner: !0,
+    prefix: !0,
+    money: 1000,
+    exp: 0.1,
+
+    run: async (xp, m, { args, chat, cmd }) => {
+      try {
+        if (!chat.group) {
+          return xp.sendMessage(chat.id, { text: '❌ Perintah ini hanya bisa dijalankan di grup' }, { quoted: m })
+        }
+
+        const q = m.message?.extendedTextMessage?.contextInfo?.quotedMessage
+        const text = args.join(' ')
+        
+        // Ambil teks dari pesan yang di-reply atau argumen
+        const fallback = q?.conversation || q?.extendedTextMessage?.text || text
+
+        if (!fallback) {
+          return xp.sendMessage(chat.id, { text: '⚠️ Teks hidetag tidak boleh kosong' }, { quoted: m })
+        }
+
+        await xp.sendMessage(chat.id, { react: { text: '⏳', key: m.key } })
+
+        // OPTIMASI 1: Ambil data dari Cache agar instan, jika tidak ada baru fetch ke server
+        const gcInfo = groupCache.get(chat.id) || await xp.groupMetadata(chat.id)
+        const all = gcInfo.participants.map(v => v.id)
+
+        // ==========================================
+        // OPTIMASI 2 & 3: Chunking Cepat (Turbo Mode)
+        // ==========================================
+        const chunkSize = 400 // Daya angkut diperbesar jadi 400
+        const delay = ms => new Promise(res => setTimeout(res, ms))
+
+        // Jika member di bawah 400 (Grup Kecil/Sedang), eksekusi instan 1x kirim!
+        if (all.length <= chunkSize) {
+          await xp.sendMessage(chat.id, { text: fallback, mentions: all })
+        } 
+        // Jika member di atas 400 (Grup Raksasa 700+), gunakan pemecahan cepat
+        else {
+          for (let i = 0; i < all.length; i += chunkSize) {
+            const chunk = all.slice(i, i + chunkSize)
+            
+            await xp.sendMessage(chat.id, { text: fallback, mentions: chunk })
+            
+            // Jeda hanya 1 detik agar prosesnya kilat tapi WA tetap tidak curiga
+            if (i + chunkSize < all.length) {
+              await delay(1000) 
+            }
+          }
+        }
+
+        await xp.sendMessage(chat.id, { react: { text: '✅', key: m.key } })
+
+      } catch (e) {
+        console.error(`Error pada ${cmd}:`, e)
+        await xp.sendMessage(chat.id, { react: { text: '❌', key: m.key } })
+      }
+    }
+  })
 
   ev.on({
     name: 'intro',
@@ -1134,7 +1199,7 @@ export default function group(ev) {
   
   ev.on({
     name: 'pin message',
-    cmd: ['pin', 'sematkan', 'unpin', 'lepaskan'],
+    cmd: ['pinpesan', 'sematkan', 'unpin', 'lepaskan'],
     tags: 'Group Menu',
     desc: 'Menyematkan (pin) atau melepas pin pesan di obrolan',
     owner: !1,
@@ -1237,7 +1302,7 @@ export default function group(ev) {
     }
   })
   
-    ev.on({
+  ev.on({
     name: 'acc join',
     cmd: ['acc', 'terima', 'accjoin', 'approve'],
     tags: 'Group Menu',
@@ -1262,7 +1327,6 @@ export default function group(ev) {
           return xp.sendMessage(chat.id, { text: '❌ Aku harus menjadi Admin terlebih dahulu untuk bisa menyetujui member.' }, { quoted: m })
         }
 
-        // Reaksi loading
         await xp.sendMessage(chat.id, { react: { text: '⏳', key: m.key } })
 
         // 1. Ambil daftar orang yang meminta bergabung
@@ -1270,7 +1334,7 @@ export default function group(ev) {
         try {
           pendingList = await xp.groupRequestParticipantsList(chat.id)
         } catch (err) {
-          return xp.sendMessage(chat.id, { text: '❌ Fitur "Persetujuan Admin untuk Bergabung" sepertinya tidak aktif di grup ini, atau terjadi kesalahan.' }, { quoted: m })
+          return xp.sendMessage(chat.id, { text: '❌ Fitur "Persetujuan Admin" sepertinya tidak aktif di grup ini.' }, { quoted: m })
         }
 
         // 2. Jika tidak ada yang mengantre
@@ -1282,31 +1346,374 @@ export default function group(ev) {
         // 3. Tentukan jumlah yang ingin di-ACC
         let targetCount = pendingList.length // Default: ACC Semua
         
-        // Jika ada input angka (misal .acc 10)
         if (args[0] && !isNaN(args[0])) {
           const inputNum = parseInt(args[0])
           if (inputNum > 0) {
-            targetCount = Math.min(inputNum, pendingList.length) // Jangan melebihi jumlah antrean yang ada
+            targetCount = Math.min(inputNum, pendingList.length)
           }
         }
 
-        // 4. Potong daftar antrean sesuai jumlah target, lalu ambil JID (ID WhatsApp) mereka
+        // ==========================================
+        // ✨ MODIFIKASI: SISTEM ACAK ANTREAN
+        // ==========================================
+        // Mengacak urutan array agar persetujuan dilakukan secara acak (atas/bawah/tengah)
+        pendingList = pendingList.sort(() => Math.random() - 0.5)
+
         const jidsToApprove = pendingList.slice(0, targetCount).map(req => req.jid)
 
-        // 5. Eksekusi persetujuan (Approve)
-        await xp.groupRequestParticipantsUpdate(chat.id, jidsToApprove, 'approve')
-
-        // 6. Kirim laporan berhasil
-        await xp.sendMessage(chat.id, { 
-          text: `✅ *BERHASIL!*\n\nTelah menyetujui *${jidsToApprove.length}* permintaan bergabung ke dalam grup.\n*(Sisa antrean: ${pendingList.length - jidsToApprove.length})*` 
-        }, { quoted: m })
+        // ==========================================
+        // ✨ MODIFIKASI: SISTEM DELAY & SATU PER SATU (1-1)
+        // ==========================================
+        let msgStart = `⏳ *PROSES ACC DIMULAI*\n\n`
+        msgStart += `Menyetujui *${targetCount}* member secara acak satu per satu...\n`
+        msgStart += `_Mohon tunggu agar bot tidak terkena limit WA._`
         
+        const progressMsg = await xp.sendMessage(chat.id, { text: msgStart }, { quoted: m })
+        
+        const delay = ms => new Promise(res => setTimeout(res, ms))
+        let accCount = 0
+
+        // Melakukan looping (perulangan) untuk meng-ACC orang satu per satu
+        for (let jid of jidsToApprove) {
+           // Memasukkan array yang hanya berisi 1 nomor (satu per satu)
+           await xp.groupRequestParticipantsUpdate(chat.id, [jid], 'approve').catch(() => {})
+           accCount++
+
+           // Update notifikasi progress setiap kelipatan 5 atau saat sudah selesai
+           if (accCount % 5 === 0 || accCount === targetCount) {
+              try {
+                 await xp.sendMessage(chat.id, { text: `⏳ *Proses ACC...* (${accCount}/${targetCount} diterima)`, edit: progressMsg.key })
+              } catch (e) {}
+           }
+           
+           // Memberikan Jeda 2 Detik (2000 ms) per orang agar terhindar dari deteksi spam/bulk action Meta
+           if (accCount < targetCount) {
+               await delay(2000) 
+           }
+        }
+
+        // 6. Laporan Akhir
+        let finalTxt = `✅ *ACC SELESAI!*\n\n`
+        finalTxt += `Berhasil memasukkan *${accCount}* member baru secara acak.\n`
+        finalTxt += `*(Sisa antrean: ${pendingList.length - accCount})*`
+
+        try { await xp.sendMessage(chat.id, { text: finalTxt, edit: progressMsg.key }) } 
+        catch (e) { await xp.sendMessage(chat.id, { text: finalTxt }, { quoted: m }) }
+
         await xp.sendMessage(chat.id, { react: { text: '✅', key: m.key } })
 
       } catch (e) {
         console.error(`Error pada command ${cmd}:`, e)
         await xp.sendMessage(chat.id, { react: { text: '❌', key: m.key } })
         await xp.sendMessage(chat.id, { text: `❌ Terjadi kesalahan saat mencoba menyetujui permintaan bergabung.` }, { quoted: m })
+      }
+    }
+  })
+
+  ev.on({
+    name: 'bersih grup',
+    cmd: ['bersihgrup', 'cleangc', 'kickbanned', 'sidakkenon'],
+    tags: 'Admin Menu',
+    desc: 'Sidak akun kenon skala besar menggunakan Native Scan WA (Super Cepat)',
+    owner: !1,
+    prefix: !0,
+    money: 0,
+    exp: 0,
+
+    run: async (xp, m, { chat, cmd, prefix }) => {
+      try {
+        if (!chat.group) return xp.sendMessage(chat.id, { text: '❌ Perintah ini hanya bisa digunakan di dalam grup!' }, { quoted: m })
+
+        const groupMetadata = await xp.groupMetadata(chat.id)
+        const participants = groupMetadata.participants
+        const botId = xp.user.id.split(':')[0] + '@s.whatsapp.net'
+
+        const isAdmins = participants.find(p => p.id === chat.sender)?.admin !== null
+        const isBotAdmins = participants.find(p => p.id === botId)?.admin !== null
+        const isOwner = chat.sender === (global.ownerNumber?.[0] || '') + '@s.whatsapp.net'
+
+        if (!isAdmins && !isOwner) return xp.sendMessage(chat.id, { text: '❌ Hanya Admin grup yang bisa menggunakan perintah ini!' }, { quoted: m })
+        if (!isBotAdmins) return xp.sendMessage(chat.id, { text: '❌ Bot harus menjadi Admin terlebih dahulu!' }, { quoted: m })
+
+        const totalMember = participants.length
+        await xp.sendMessage(chat.id, { react: { text: '⏳', key: m.key } })
+        
+        let msgStart = `🕵️‍♂️ _Memulai Native Scan pada ${totalMember} anggota..._\n\n`
+        msgStart += `⚡ *Mode Super Cepat Aktif:*\n_Bot sedang mengecek langsung ke server Meta/WhatsApp._`
+        const progressMsg = await xp.sendMessage(chat.id, { text: msgStart }, { quoted: m })
+
+        let kickedCount = 0
+        let scannedCount = 0
+        let errorCount = 0
+
+        const delay = ms => new Promise(res => setTimeout(res, ms))
+
+        for (let part of participants) {
+          const jid = part.id
+          const num = jid.split('@')[0]
+
+          if (jid === botId || part.admin !== null || num === global.ownerNumber?.[0]) continue
+
+          scannedCount++
+
+          try {
+            // ✨ PERBAIKAN: Menggunakan fungsi bawaan Baileys untuk ngecek keaslian nomor!
+            const [cekWa] = await xp.onWhatsApp(num)
+
+            // Jika nomor tidak ada di server WA (Kenon / Dihapus permanen)
+            if (!cekWa || !cekWa.exists) {
+               await xp.groupParticipantsUpdate(chat.id, [jid], 'remove').catch(() => {})
+               kickedCount++
+            }
+          } catch (err) {
+            errorCount++
+          }
+
+          // Live Progress update setiap kelipatan 50 anggota
+          if (scannedCount % 50 === 0 || scannedCount === totalMember - 3) {
+             let updateTxt = `⏳ *NATIVE SCAN BERJALAN (${scannedCount}/${totalMember})*\n\n`
+             updateTxt += `☠️ *Akun Mati Ditendang:* ${kickedCount} zombi.\n\n`
+             updateTxt += `_Mengecek langsung ke server Meta..._`
+             
+             try { await xp.sendMessage(chat.id, { text: updateTxt, edit: progressMsg.key }) } catch (e) {}
+          }
+
+          // Jeda dipercepat jadi 1 detik saja karena ping internal WA jauh lebih ringan
+          await delay(1000) 
+        }
+
+        // Laporan Akhir
+        let finalTxt = `🧹 *SIDAK GRUP SUPER SELESAI*\n\n`
+        finalTxt += `📊 *Total Diperiksa:* ${scannedCount} anggota\n`
+        finalTxt += `☠️ *Akun Banned/Mati Ditendang:* ${kickedCount} orang\n`
+        if (errorCount > 0) finalTxt += `⚠️ *Gagal Cek:* ${errorCount} nomor\n`
+        finalTxt += `\n> *Grup sekarang 100% bersih dari akun zombi!*`
+
+        try {
+            await xp.sendMessage(chat.id, { text: finalTxt, edit: progressMsg.key })
+        } catch (e) {
+            await xp.sendMessage(chat.id, { text: finalTxt }, { quoted: m })
+        }
+        
+        await xp.sendMessage(chat.id, { react: { text: '✅', key: m.key } })
+
+      } catch (e) {
+        console.error(`Error utama pada ${cmd}:`, e)
+        await xp.sendMessage(chat.id, { react: { text: '❌', key: m.key } })
+      }
+    }
+  })
+
+  ev.on({
+    name: 'kick pasif',
+    cmd: ['kickpasif', 'sidakpasif', 'cleansilent'],
+    tags: 'Group Menu',
+    desc: 'Menendang silent reader yang tidak pernah chat selama X hari',
+    owner: !1,
+    prefix: !0,
+    money: 0,
+    exp: 0,
+
+    run: async (xp, m, { args, chat, cmd, prefix }) => {
+      try {
+        if (!chat.group) return xp.sendMessage(chat.id, { text: '❌ Perintah ini hanya bisa digunakan di dalam grup!' }, { quoted: m })
+
+        const groupMetadata = await xp.groupMetadata(chat.id)
+        const participants = groupMetadata.participants
+        const botId = xp.user.id.split(':')[0] + '@s.whatsapp.net'
+
+        const isAdmins = participants.find(p => p.id === chat.sender)?.admin !== null
+        const isBotAdmins = participants.find(p => p.id === botId)?.admin !== null
+        const isOwner = chat.sender === (global.ownerNumber?.[0] || '') + '@s.whatsapp.net'
+
+        if (!isAdmins && !isOwner) return xp.sendMessage(chat.id, { text: '❌ Hanya Admin grup yang bisa menggunakan perintah ini!' }, { quoted: m })
+        if (!isBotAdmins) return xp.sendMessage(chat.id, { text: '❌ Bot harus menjadi Admin terlebih dahulu!' }, { quoted: m })
+
+        // Validasi input jumlah hari
+        if (!args[0] || isNaN(args[0])) {
+           return xp.sendMessage(chat.id, { 
+               text: `⚠️ *Format Salah!*\n\nMasukkan jumlah hari batas pasif.\n\n💬 *Contoh:* ${prefix}${cmd} 30\n_(Artinya: menendang anggota yang tidak pernah chat selama 30 hari)_` 
+           }, { quoted: m })
+        }
+
+        const hari = parseInt(args[0])
+        
+        // Mencegah admin iseng nendang orang yang baru sehari nggak buka grup
+        if (hari < 7) {
+           return xp.sendMessage(chat.id, { text: `⚠️ *Terlalu Cepat!*\n\nMinimal set waktu ke 7 hari agar wajar dan tidak salah tendang orang yang cuma lagi sibuk.` }, { quoted: m })
+        }
+
+        await xp.sendMessage(chat.id, { react: { text: '⏳', key: m.key } })
+
+        // Menghitung batas waktu: Waktu sekarang dikurangi (Hari x 24 Jam x 60 Menit x 60 Detik x 1000 Milidetik)
+        const batasWaktu = Date.now() - (hari * 24 * 60 * 60 * 1000)
+        
+        let targetKick = []
+        let amanCount = 0
+        const allUsers = Object.values(db().key) // Mengambil seluruh database user
+
+        // Memilah mana yang rajin dan mana yang silent reader
+        for (let part of participants) {
+          const jid = part.id
+          const num = jid.split('@')[0]
+
+          // Lewati bot, admin grup, dan owner bot
+          if (jid === botId || part.admin !== null || num === global.ownerNumber?.[0]) continue
+
+          const userData = allUsers.find(u => u.jid === jid)
+          
+          // Mengambil waktu chat terakhir (CCTV). Jika belum pernah terekam (0), otomatis masuk target tendang
+          const lastChatTime = userData?.lastchat || 0
+
+          if (lastChatTime < batasWaktu) {
+             targetKick.push(jid)
+          } else {
+             amanCount++
+          }
+        }
+
+        if (targetKick.length === 0) {
+           return xp.sendMessage(chat.id, { text: `✅ *Grup Sangat Aktif!*\n\nTidak ditemukan *Silent Reader* yang pasif lebih dari ${hari} hari. Semua anggota rajin chatting!` }, { quoted: m })
+        }
+
+        // Mulai proses eksekusi dengan Live Progress
+        let msgStart = `🚨 *SIDAK SILENT READER DIMULAI*\n\n`
+        msgStart += `🔎 *Target:* ${targetKick.length} orang (Pasif ${hari} Hari)\n`
+        msgStart += `🛡️ *Anggota Aktif (Aman):* ${amanCount} orang\n\n`
+        msgStart += `_Mengeksekusi target perlahan agar tidak terkena spam limit WA..._`
+        
+        const progressMsg = await xp.sendMessage(chat.id, { text: msgStart }, { quoted: m })
+        
+        let kickedCount = 0
+        const delay = ms => new Promise(res => setTimeout(res, ms))
+
+        for (let jid of targetKick) {
+           await xp.groupParticipantsUpdate(chat.id, [jid], 'remove').catch(() => {})
+           kickedCount++
+
+           // Update pesan progress setiap kelipatan 20 atau saat sudah selesai semua
+           if (kickedCount % 20 === 0 || kickedCount === targetKick.length) {
+              try {
+                 await xp.sendMessage(chat.id, { text: `⏳ *Mengeksekusi...* (${kickedCount}/${targetKick.length} ditendang)`, edit: progressMsg.key })
+              } catch (e) {}
+           }
+           await delay(1500) // Jeda 1.5 detik per tendangan
+        }
+
+        // Laporan Akhir
+        let finalTxt = `🧹 *PEMBERSIHAN SILENT READER SELESAI*\n\n`
+        finalTxt += `☠️ *Total Ditendang:* ${kickedCount} orang\n`
+        finalTxt += `⏱️ *Batas Pasif:* ${hari} Hari\n\n`
+        finalTxt += `> _Mereka ditendang karena hanya menyimak tanpa pernah mengirim pesan di grup ini._`
+
+        try { await xp.sendMessage(chat.id, { text: finalTxt, edit: progressMsg.key }) } 
+        catch (e) { await xp.sendMessage(chat.id, { text: finalTxt }, { quoted: m }) }
+
+        await xp.sendMessage(chat.id, { react: { text: '✅', key: m.key } })
+
+      } catch (e) {
+        console.error(`Error pada command ${cmd}:`, e)
+        await xp.sendMessage(chat.id, { react: { text: '❌', key: m.key } })
+      }
+    }
+  })
+  
+  ev.on({
+    name: 'sweep tag',
+    cmd: ['sweeptag', 'sidak', 'bersihtag', 'cleanspam'],
+    tags: 'Admin Menu',
+    desc: 'Membersihkan oknum spam tag/SW yang beraksi saat bot mati',
+    owner: !1,
+    prefix: !0,
+    money: 0,
+    exp: 0,
+
+    run: async (xp, m, { chat, cmd, prefix }) => {
+      try {
+        if (!chat.group) return xp.sendMessage(chat.id, { text: '❌ Perintah ini hanya bisa digunakan di dalam grup!' }, { quoted: m })
+
+        // Validasi Admin dan Bot Admin
+        const groupMetadata = await xp.groupMetadata(chat.id)
+        const participants = groupMetadata.participants
+        const botId = xp.user.id.split(':')[0] + '@s.whatsapp.net'
+        
+        const isAdmins = participants.find(p => p.id === chat.sender)?.admin !== null
+        const isBotAdmins = participants.find(p => p.id === botId)?.admin !== null
+        const isOwner = chat.sender === global.ownerNumber[0] + '@s.whatsapp.net'
+
+        if (!isAdmins && !isOwner) return xp.sendMessage(chat.id, { text: '❌ Hanya Admin grup yang bisa melakukan sidak!' }, { quoted: m })
+        if (!isBotAdmins) return xp.sendMessage(chat.id, { text: '❌ Bot harus menjadi Admin terlebih dahulu untuk bisa menendang oknum dan menghapus pesan!' }, { quoted: m })
+
+        await xp.sendMessage(chat.id, { react: { text: '🕵️‍♂️', key: m.key } })
+        await xp.sendMessage(chat.id, { text: '🕵️‍♂️ _Melakukan inspeksi mendadak... Memeriksa riwayat pesan saat bot tertidur..._' }, { quoted: m })
+
+        // Mengambil memori pesan grup
+        const memStore = typeof store !== 'undefined' ? store : global.store
+        // PERBAIKAN: Penambahan opsional chaining (?.) sebelum [chat.id]
+        const msgs = memStore?.messages?.[chat.id]?.array || []
+
+        if (msgs.length === 0) {
+            return xp.sendMessage(chat.id, { text: '✅ Memori grup kosong atau aman.' }, { quoted: m })
+        }
+
+        // Batas jumlah tag yang dianggap SPAM (Bisa kamu atur)
+        const TAG_LIMIT = 15 
+        let offenders = new Set()
+        let messagesToDelete = []
+
+        // Mengais riwayat pesan dari bawah ke atas
+        for (let msg of msgs) {
+            // Cek apakah ada mention di dalam pesan
+            const mentions = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid || []
+            
+            // Cek apakah pesan menggunakan fitur tagall/hidetag bawaan WhatsApp
+            const isAllMentions = msg.message?.extendedTextMessage?.contextInfo?.mentionAll || false
+
+            if (mentions.length > TAG_LIMIT || isAllMentions) {
+                const sender = msg.key.participant || msg.key.remoteJid
+                
+                // Jangan tendang sesama Admin atau Owner!
+                const isSenderAdmin = participants.find(p => p.id === sender)?.admin !== null
+                const isSenderOwner = sender === global.ownerNumber[0] + '@s.whatsapp.net'
+
+                if (!isSenderAdmin && !isSenderOwner && sender !== botId) {
+                    offenders.add(sender)
+                    messagesToDelete.push(msg.key)
+                }
+            }
+        }
+
+        if (offenders.size === 0) {
+            return xp.sendMessage(chat.id, { text: '✅ Hutan aman! Tidak ditemukan oknum spammer/fakboy SW di memori grup ini.' }, { quoted: m })
+        }
+
+        await xp.sendMessage(chat.id, { text: `🚨 *TARGET DITEMUKAN!*\n\nDitemukan ${offenders.size} oknum yang melakukan spam tag.\nMengeksekusi target...` }, { quoted: m })
+
+        const delay = ms => new Promise(res => setTimeout(res, ms))
+
+        // 1. Menghapus Pesan Spam Mereka (Tarik Pesan)
+        for (let key of messagesToDelete) {
+            await xp.sendMessage(chat.id, { delete: key }).catch(() => {})
+            await delay(500) // Jeda agar tidak spam request
+        }
+
+        // 2. Menendang (Kick) Para Pelaku
+        const arrayOffenders = Array.from(offenders)
+        await xp.groupParticipantsUpdate(chat.id, arrayOffenders, 'remove').catch(() => {})
+
+        // Laporan Selesai
+        let txt = `🧹 *SIDAK SELESAI*\n\nBerhasil membasmi dan menghapus pesan dari oknum berikut:\n`
+        arrayOffenders.forEach((jid, i) => {
+            txt += `${i + 1}. @${jid.split('@')[0]}\n`
+        })
+        txt += `\n> *Pesan Sponsor:* Makanya jangan macem-macem kalau bot lagi tidur!`
+
+        await xp.sendMessage(chat.id, { text: txt, mentions: arrayOffenders }, { quoted: m })
+        await xp.sendMessage(chat.id, { react: { text: '✅', key: m.key } })
+
+      } catch (e) {
+        console.error(`Error pada command ${cmd}:`, e)
+        await xp.sendMessage(chat.id, { react: { text: '❌', key: m.key } })
       }
     }
   })

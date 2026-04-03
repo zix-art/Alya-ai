@@ -492,9 +492,9 @@ export default function info(ev) {
 
   ev.on({
     name: 'profile',
-    cmd: ['profile', 'me'],
+    cmd: ['profile', 'me', 'profil'],
     tags: 'Info Menu',
-    desc: 'mengecek profile orang',
+    desc: 'Mengecek profile dan statistik game',
     owner: !1,
     prefix: !0,
     money: 1,
@@ -510,56 +510,88 @@ export default function info(ev) {
               defThumb = 'https://c.termai.cc/i0/7DbG.jpg',
               type = v => v ? 'Aktif' : 'Tidak'
 
-        if (!data) return xp.sendMessage(chat.id, { text: 'kamu belum terdaftar, ulangi' }, { quoted: m })
+        if (!data) return xp.sendMessage(chat.id, { text: '❌ Kamu belum terdaftar, silakan ulangi' }, { quoted: m })
 
         let thumb
         try { thumb = await xp.profilePictureUrl(chat.sender, 'image') }
         catch { thumb = defThumb }
 
-        const name = chat.pushName || m.pushName,
+        const name = chat.pushName || m.pushName || 'Player',
               nomor = data.jid,
-              noId = base64(data.noId),
-              cmd = data.cmd,
+              noId = data.noId ? base64(data.noId) : '-',
+              cmdUsage = data.cmd || 0, // PERBAIKAN BENTROK VARIABEL
               ban = type(data.ban),
-              ai = type(data.ai?.bell),
-              farm = type(data?.game?.farm),
-              chatAi = data.ai.chat,
-              role = data.ai.role,
-              acc = data.acc,
-              money = data.moneyDb?.money.toLocaleString('id-ID'),
-              moneyInBank = data.moneyDb?.moneyInBank.toLocaleString('id-ID'),
-              exp = data.exp || 0,
-              level = ((exp + 10) / 10).toFixed(1),
-              cost = data.game.robbery.cost
+              acc = data.acc || 'Belum diatur'
 
+        // Data AI
+        const ai = type(data.ai?.bell),
+              chatAi = data.ai?.chat || 0,
+              role = data.ai?.role || 'Gak Kenal'
+
+        // Data Ekonomi & Game Dasar
+        const money = data.moneyDb?.money || 0,
+              moneyInBank = data.moneyDb?.moneyInBank || 0,
+              farm = type(data?.game?.farm),
+              costRampok = data.game?.robbery?.cost || 0
+
+        // Data RPG (Integrasi fitur baru)
+        const rpg = data.rpg || { hp: 100, potion: 0, level: 1, exp: 0 },
+              expNeeded = rpg.level * 100
+
+        // Sistem Pangkat / Rank berdasarkan Level RPG
+        let pangkat = 'Pemula 🌱'
+        if (rpg.level >= 5) pangkat = 'Warga Biasa 🏘️'
+        if (rpg.level >= 10) pangkat = 'Petarung ⚔️'
+        if (rpg.level >= 20) pangkat = 'Ksatria 🛡️'
+        if (rpg.level >= 30) pangkat = 'Lord 👑'
+        if (rpg.level >= 50) pangkat = 'Legend 🐉'
+
+        // Menghitung Total Ikan di Inventory
+        const inv = data.game?.inventory || {}
+        let totalIkan = 0
+        for (let item in inv) {
+           if (item !== 'sampah') totalIkan += inv[item]
+        }
+
+        // Menyusun Tampilan Teks
         let txt = `${head} ${opb} *P R O F I L E* ${clb}\n`
             txt += `${body} ${btn} *Nama:* ${name}\n`
-            txt += `${body} ${btn} *Nomor:* ${nomor}\n`
-            txt += `${body} ${btn} *No ID:* ${noId}\n`
-            txt += `${body} ${btn} *Cmd:* ${cmd}\n`
+            txt += `${body} ${btn} *Nomor:* @${nomor.split('@')[0]}\n`
+            txt += `${body} ${btn} *Pangkat:* ${pangkat}\n`
+            txt += `${body} ${btn} *Cmd Usage:* ${cmdUsage}\n`
             txt += `${body} ${btn} *Ban:* ${ban}\n`
             txt += `${body} ${btn} *Acc:* ${acc}\n`
             txt += `${foot}${line}\n\n`
-            txt += `${readmore}`
-            txt += `${head} ${opb} *A I* ${clb}\n`
-            txt += `${body} ${btn} *Ai:* ${ai}\n`
-            txt += `${body} ${btn} *Chat Ai:* ${chatAi}\n`
-            txt += `${body} ${btn} *Role:* ${role}\n`
-            txt += `${foot}${line}\n\n`
-            txt += `${head} ${opb} *G A M E* ${clb}\n`
-            txt += `${body} ${btn} *Money:* Rp ${money}\n`
-            txt += `${body} ${btn} *Uang Di Bank:* Rp ${moneyInBank}\n`
-            txt += `${body} ${btn} *Level:* ${level}\n`
+            
+            txt += `${readmore}` // Tombol baca selengkapnya
+            
+            txt += `${head} ${opb} *E K O N O M I* ${clb}\n`
+            txt += `${body} ${btn} *Dompet:* Rp ${money.toLocaleString('id-ID')}\n`
+            txt += `${body} ${btn} *Bank:* Rp ${moneyInBank.toLocaleString('id-ID')}\n`
+            txt += `${body} ${btn} *Limit Rampok:* ${costRampok}x\n`
             txt += `${body} ${btn} *Auto Farm:* ${farm}\n`
-            txt += `${body} ${btn} *Kesempatan Rampok:* ${cost}\n`
-            txt += `${foot}${line}`
+            txt += `${foot}${line}\n\n`
 
+            txt += `${head} ${opb} *S T A T U S  R P G* ${clb}\n`
+            txt += `${body} ${btn} *Level:* ${rpg.level}\n`
+            txt += `${body} ${btn} *EXP:* ${rpg.exp} / ${expNeeded}\n`
+            txt += `${body} ${btn} *Darah (HP):* ${rpg.hp}/100 🩸\n`
+            txt += `${body} ${btn} *Potion:* ${rpg.potion} 🧪\n`
+            txt += `${body} ${btn} *Hasil Mancing:* ${totalIkan} Ekor 🐟\n`
+            txt += `${foot}${line}\n\n`
+
+            txt += `${head} ${opb} *A I* ${clb}\n`
+            txt += `${body} ${btn} *Notif AI:* ${ai}\n`
+            txt += `${body} ${btn} *Chat AI:* ${chatAi}\n`
+            txt += `${body} ${btn} *Role:* ${role}\n`
+            txt += `${foot}${line}`
 
         await xp.sendMessage(chat.id, {
           text: txt,
+          mentions: [nomor],
           contextInfo: {
             externalAdReply: {
-              body: `ini profile ${name}`,
+              body: `Statistik Petualang ${name}`,
               thumbnailUrl: thumb,
               mediaType: 1,
               renderLargerThumbnail: !0
@@ -568,17 +600,18 @@ export default function info(ev) {
             isForwarded: !0,
             forwardedNewsletterMessageInfo: {
               newsletterJid: idCh,
-              newsletterName: `klik disini untuk dukung ${botName}`
+              newsletterName: `Klik disini untuk dukung Code_Bot`
             }
           }
         }, { quoted: m })
       } catch (e) {
-        err(`error pada ${cmd}`, e)
-        call(xp, e, m)
+        console.error(`Error pada ${cmd}:`, e)
+        if (typeof err === 'function') err(`error pada ${cmd}`, e)
+        if (typeof call === 'function') call(xp, e, m)
       }
     }
   })
-
+  
   ev.on({
     name: 'stats',
     cmd: ['st', 'stats', 'ping'],

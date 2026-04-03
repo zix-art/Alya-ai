@@ -10,8 +10,7 @@ import { ocrs } from './ocrs.js'
 import { pathToFileURL } from "url"
 
 const dirs = [
-    p.join(dirname, "../cmd/command"),
-    p.join(dirname, "../cmd/detector")
+    p.join(dirname, "../cmd/command") // <-- Folder detector sudah dihapus dari sini agar aman
 ]
 
 const _idCmd = def => {
@@ -146,10 +145,26 @@ const watch = () => {
 const handleCmd = async (m, xp, store) => {
   try {
     const { text } = getMessageContent(m)
+    
+    // Kembali normal: Mengabaikan stiker dan file tanpa teks
     if (!text || !m.key) return
 
     // 1. Definisikan chat lebih awal agar bisa dikirim ke event detector
     const chat = global.chat(m)
+
+    // ==========================================
+    // ✨ CCTV TRACKER SILENT READER (Tetap Aman)
+    // ==========================================
+    if (chat.group && chat.sender) {
+        // Cari database user yang sedang mengirim pesan
+        const userDb = Object.values(db().key).find(u => u.jid === chat.sender) || db().key[chat.sender]
+        if (userDb) {
+            // Gunakan timestamp asli dari Meta (Akurat walau bot sempat mati)
+            const waktuAsli = m.messageTimestamp ? (m.messageTimestamp * 1000) : Date.now()
+            userDb.lastchat = waktuAsli
+        }
+    }
+    // ==========================================
 
     // 2. Pancarkan event 'message' untuk semua file detector sebelum pengecekan command
     ev.emit('message', xp, m, { chat, text, store })
@@ -161,7 +176,7 @@ const handleCmd = async (m, xp, store) => {
           [cmd, ...args] = cmdText.split(/\s+/),
           _cmdLow = cmd?.toLowerCase()
           
-    // 3. Hentikan eksekusi command jika bukan command (event 'message' untuk detector sudah jalan di atas)
+    // 3. Hentikan eksekusi command jika bukan command
     if (!_cmdLow) return
     if (await ocrs(xp, m)) return
 
@@ -175,18 +190,7 @@ const handleCmd = async (m, xp, store) => {
 
     if (!evData || ((evData.prefix ?? !0) ? !pre : pre)) return
 
-    // ==========================================
-    // SISTEM BLOKIR GRUP TIDAK TERDAFTAR (SILENT)
-    // ==========================================
-    if (chat.group) {
-      const isRegistered = !!getGc(chat) // Cek apakah grup ada di database
-      
-      // Jika grup BELUM terdaftar, dan command BUKAN 'daftargc', dan BUKAN command khusus Owner
-      if (!isRegistered && !['daftargc', 'daftargrup'].includes(_cmdLow) && !evData.owner) {
-        return // Langsung hentikan eksekusi tanpa mengirim pesan apapun (Silent)
-      }
-    }
-    // ==========================================
+    // <-- Blokir Grup Dobel sudah dibersihkan dari sini -->
 
     let sub = null
 
@@ -253,4 +257,3 @@ const handleCmd = async (m, xp, store) => {
 
 watch()
 export { handleCmd, loadAll, ev }
-

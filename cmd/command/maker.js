@@ -2,11 +2,169 @@ import axios from 'axios'
 import fd from 'form-data'
 import fs from 'fs'
 import path from 'path'
+import { createRequire } from 'module'
 import { spawn, exec } from 'child_process'
 import { downloadMediaMessage } from 'baileys'
 import { writeExifImg, writeExifVid, mediaMessage } from '../../system/exif.js'
 
+const require = createRequire(import.meta.url)
+const Jimp = require('jimp')
+
 export default function maker(ev) {
+  ev.on({
+    name: 'graffiti text',
+    cmd: ['graffiti', 'grafiti', 'grafititext'],
+    tags: 'Maker Menu',
+    desc: 'Membuat tulisan bergaya grafiti kartun (Ephoto360)',
+    owner: !1, 
+    prefix: !0,
+    money: 15, 
+    exp: 0.5,
+
+    run: async (xp, m, { args, chat, cmd, prefix }) => {
+      try {
+        const textInput = args.join(' ')
+        
+        if (!textInput) {
+          return xp.sendMessage(chat.id, { 
+            text: `⚠️ *Format salah!*\n\nMasukkan teks yang ingin dijadikan grafiti.\n\n💬 *Contoh:* ${prefix}${cmd} arewwp` 
+          }, { quoted: m })
+        }
+
+        await xp.sendMessage(chat.id, { react: { text: '⏳', key: m.key } })
+
+        const ephotoUrl = 'https://en.ephoto360.com/create-a-cartoon-style-graffiti-text-effect-online-668.html'
+        const apiUrl = `https://api.siputzx.my.id/api/m/ephoto360?url=${encodeURIComponent(ephotoUrl)}&text1=${encodeURIComponent(textInput)}`
+        
+        // ✨ PERBAIKAN TOTAL: Ambil Data Gambar Langsung (Buffer)
+        const res = await axios.get(apiUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          },
+          timeout: 60000, // Ephoto sangat lambat, kita kasih waktu 1 menit
+          responseType: 'arraybuffer' // 👈 Wajib ini agar axios mengambil data biner gambar
+        })
+        
+        // Validasi apakah data yang diterima benar-benar gambar
+        if (!res.data || res.data.byteLength < 100) {
+            throw new Error('Data yang diterima bukan gambar yang valid.')
+        }
+
+        // ✨ Kirim Buffer Gambarnya Langsung
+        await xp.sendMessage(chat.id, {
+          image: Buffer.from(res.data), // 👈 Ubah arraybuffer menjadi Buffer Node.js
+          caption: `🎨 *GRAFFITI MAKER*\n\nBerhasil membuat teks grafiti untuk: *${textInput}*`
+        }, { quoted: m })
+
+        await xp.sendMessage(chat.id, { react: { text: '✅', key: m.key } })
+
+      } catch (e) {
+        // Karena responseType: arraybuffer, detail error axios biasa tidak terlihat.
+        // Kita gunakan e.message saja.
+        console.error(`Error pada command ${cmd}:`, e.message)
+        await xp.sendMessage(chat.id, { react: { text: '❌', key: m.key } })
+        
+        if (e.message.includes('timeout')) {
+            await xp.sendMessage(chat.id, { text: `❌ Waktu permintaan habis. Ephoto360 sedang sangat lambat. Coba lagi nanti.` }, { quoted: m })
+        } else {
+            await xp.sendMessage(chat.id, { text: `❌ Gagal membuat grafiti. API menolak koneksi atau sedang gangguan.` }, { quoted: m })
+        }
+      }
+    }
+  })
+  
+  ev.on({
+    name: 'buat pp gc isian ff',
+    cmd: ['ppgbisian', 'buatppgcisian'],
+    tags: 'Maker Menu',
+    desc: 'Membuat PP Group Isian dengan teks (Wajib reply/kirim gambar)',
+    owner: !1, 
+    prefix: !0,
+    money: 50, 
+    exp: 1,
+
+    run: async (xp, m, { args, chat, cmd, prefix }) => {
+      try {
+        const input = args.join(' ')
+        if (!input || !input.includes('|')) {
+          return xp.sendMessage(chat.id, { 
+            text: `⚠️ *Format salah!*\n\nSertakan teks dengan pemisah garis tegak *(|)* dan reply/kirim gambar sebagai background.\n\n💬 *Contoh:* ${prefix}${cmd} GB ISIAN|KING DIXZYY|08123xxxx` 
+          }, { quoted: m })
+        }
+
+        const [text1, text2, noWa] = input.split('|').map(v => v.trim())
+        if (!text1 || !text2 || !noWa) {
+           return xp.sendMessage(chat.id, { text: `⚠️ Pastikan mengisi ketiga bagian teks: Baris 1, Baris 2, dan Nomor WA.` }, { quoted: m })
+        }
+
+        await xp.sendMessage(chat.id, { react: { text: '⏳', key: m.key } })
+
+        const q = m.message?.extendedTextMessage?.contextInfo?.quotedMessage || m.message
+        if (!q || !q.imageMessage) {
+           return xp.sendMessage(chat.id, { text: '❌ Wajib me-reply pesan gambar atau mengirim gambar dengan caption perintah ini.' }, { quoted: m })
+        }
+
+        const mediaBuffer = await downloadMediaMessage({ message: q }, 'buffer')
+        if (!mediaBuffer) throw new Error('Gagal mengunduh gambar background.')
+
+        // ==========================================
+        // INTEGRASI LOGIKA JIMP (Murni JS, Anti Error Termux)
+        // ==========================================
+        
+        // Membaca gambar background
+        const image = await Jimp.read(mediaBuffer)
+        const w = image.bitmap.width
+        const h = image.bitmap.height
+
+        // Memuat Font bawaan Jimp (Otomatis didownload dari memori)
+        const font64White = await Jimp.loadFont(Jimp.FONT_SANS_64_WHITE)
+        const font64Black = await Jimp.loadFont(Jimp.FONT_SANS_64_BLACK)
+        const font32White = await Jimp.loadFont(Jimp.FONT_SANS_32_WHITE)
+        const font32Black = await Jimp.loadFont(Jimp.FONT_SANS_32_BLACK)
+
+        // Fungsi bantuan untuk mencetak teks di tengah beserta bayangan hitam (Outline tebal)
+        const printTextWithShadow = (img, fontWhite, fontBlack, text, yPosition) => {
+          // Cetak bayangan hitam di 4 sudut (kiri, kanan, atas, bawah) agar membentuk outline
+          img.print(fontBlack, 2, yPosition + 2, { text: text, alignmentX: Jimp.HORIZONTAL_ALIGN_CENTER }, w, h)
+          img.print(fontBlack, -2, yPosition - 2, { text: text, alignmentX: Jimp.HORIZONTAL_ALIGN_CENTER }, w, h)
+          img.print(fontBlack, 2, yPosition - 2, { text: text, alignmentX: Jimp.HORIZONTAL_ALIGN_CENTER }, w, h)
+          img.print(fontBlack, -2, yPosition + 2, { text: text, alignmentX: Jimp.HORIZONTAL_ALIGN_CENTER }, w, h)
+          
+          // Cetak teks putih utama persis di tengah
+          img.print(fontWhite, 0, yPosition, { text: text, alignmentX: Jimp.HORIZONTAL_ALIGN_CENTER }, w, h)
+        }
+
+        // Tentukan titik Y (Tinggi) untuk masing-masing teks
+        const centerY = h / 2
+        
+        // Cetak Baris 1 (Tengah Atas)
+        printTextWithShadow(image, font64White, font64Black, text1, centerY - 80)
+        
+        // Cetak Baris 2 (Tengah)
+        printTextWithShadow(image, font64White, font64Black, text2, centerY)
+        
+        // Cetak Nomor WA (Tengah Bawah, pakai font lebih kecil)
+        printTextWithShadow(image, font32White, font32Black, noWa, centerY + 100)
+
+        // Render hasil akhir kembali menjadi buffer JPG
+        const outputBuffer = await image.getBufferAsync(Jimp.MIME_JPEG)
+
+        // Kirim hasil ke WhatsApp
+        await xp.sendMessage(chat.id, {
+          image: outputBuffer,
+          caption: `✅ *PP Group Berhasil Dibuat!*\n\n📝 *Teks:* ${text1}, ${text2}\n📱 *WA:* ${noWa}\n\n> *Powered by Jimp*`
+        }, { quoted: m })
+
+        await xp.sendMessage(chat.id, { react: { text: '✅', key: m.key } })
+
+      } catch (e) {
+        console.error(`Error pada command ${cmd}:`, e)
+        await xp.sendMessage(chat.id, { react: { text: '❌', key: m.key } })
+        await xp.sendMessage(chat.id, { text: `❌ Gagal memproses gambar.\n*Detail:* ${e.message}` }, { quoted: m })
+      }
+    }
+  })
+
   ev.on({
     name: 'brat',
     cmd: ['brat'],
@@ -85,88 +243,7 @@ export default function maker(ev) {
       }
     }
   })
-
-  // ==========================================
-  // FAKE GROUP ANDROID (Pemisah Tanda Kutip "")
-  // ==========================================
-  ev.on({
-    name: 'fake group',
-    cmd: ['fakegroup', 'fakegroupandroid', 'fgandroid', 'fga'],
-    tags: 'Maker Menu',
-    desc: 'membuat gambar fake group whatsapp android',
-    owner: !1,
-    prefix: !0,
-    money: 100,
-    exp: 0.1,
-
-    run: async (xp, m, { args, chat, cmd, prefix }) => {
-      try {
-        let text = args.join(" ").trim()
-        let imageUrl = null
-
-        const urlMatch = text.match(/https?:\/\/\S+/)
-        if (urlMatch) {
-          imageUrl = urlMatch[0]
-          text = text.replace(imageUrl, "").trim()
-        }
-
-        // Ambil teks di dalam tanda kutip ""
-        const arr = [...text.matchAll(/"([^"]+)"/g)].map(v => v[1])
-        
-        if (arr.length < 4) {
-          return await xp.sendMessage(chat.id, { 
-            text: `⚠️ *Format penggunaan :*\n📍 *Parameter:* "Nama Group" "member" "deskripsi" "tanggal"\n\n💬 *Contoh 1:*\n${prefix}${cmd} "GB ISIAN ZI'X X AWENK || GB 1" "941" "?" "12/04/25"\n\n💬 *Contoh 2 (Reply/Kirim Gambar):*\n${prefix}${cmd} "Grup Santai" "800" "Welcome" "01/02/26"` 
-          }, { quoted: m })
-        }
-
-        const [name, members, desc, date] = arr
-
-        await xp.sendMessage(chat.id, { react: { text: "🕒", key: m.key } })
-
-        const q = m.message?.extendedTextMessage?.contextInfo?.quotedMessage
-        const isImageMsg = q?.imageMessage || m.message?.imageMessage
-
-        if (!imageUrl && isImageMsg) {
-          const buf = await downloadMediaMessage({ message: q || m.message }, 'buffer')
-          if (buf) {
-            const f = new fd()
-            f.append('files[]', buf, { filename: 'fga.jpg', contentType: 'image/jpeg' })
-            const { data } = await axios.post('https://uguu.se/upload.php', f, { headers: f.getHeaders() })
-            imageUrl = data?.files?.[0]?.url
-          }
-        }
-
-        if (!imageUrl) {
-          const sender = m.message?.extendedTextMessage?.contextInfo?.participant || chat.sender
-          try {
-            imageUrl = await xp.profilePictureUrl(sender, "image")
-          } catch {
-            imageUrl = "https://i.ibb.co/bjpkpXhm/image-1773651795677.jpg"
-          }
-        }
-
-        if (!imageUrl) throw new Error("Gagal memproses gambar")
-
-        const api = `https://kazztzyy.my.id/api/maker/fakegroup?image=${encodeURIComponent(imageUrl)}&name=${encodeURIComponent(name)}&members=${encodeURIComponent(members)}&desc=${encodeURIComponent(desc)}&date=${encodeURIComponent(date)}`
-
-        await xp.sendMessage(chat.id, {
-          image: { url: api },
-          caption: "*Fake Group Android berhasil dibuat* ✅\n> *Powered By " + global.botName + "*"
-        }, { quoted: m })
-
-        await xp.sendMessage(chat.id, { react: { text: "✅", key: m.key } })
-
-      } catch (e) {
-        err(`error pada ${cmd}`, e)
-        await xp.sendMessage(chat.id, { react: { text: "❌", key: m.key } })
-        await xp.sendMessage(chat.id, { text: `⚠️ Maaf, terjadi kesalahan saat memproses permintaan anda.\n💡 Detail Error: ${e.message}` }, { quoted: m })
-      }
-    }
-  })
-
-  // ==========================================
-  // FAKE GROUP IOS/IPHONE (Pemisah Tanda Kutip "")
-  // ==========================================
+  
   ev.on({
     name: 'fake group ios',
     cmd: ['fakegroupios', 'fakegroupiphone', 'fgios', 'fgi'],

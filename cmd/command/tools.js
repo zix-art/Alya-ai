@@ -2,6 +2,7 @@ import axios from 'axios'
 import fromdt from 'form-data'
 import fs from 'fs'
 import os from 'os'
+import { fileTypeFromBuffer } from 'file-type' // Pastikan kamu sudah import ini di atas
 import path from 'path'
 import c from 'chalk'
 import util from 'util'
@@ -50,6 +51,112 @@ async function reactBoostReach(url, emoji){
 }
 
 export default function tools(ev) {
+  ev.on({
+    name: 'face swap',
+    cmd: ['faceswap', 'tukarwajah', 'swapface'],
+    tags: 'Tools Menu',
+    desc: 'Menukar wajah dari dua gambar',
+    owner: !1, // Bisa dipakai member
+    prefix: !0,
+    money: 30, // Lumayan berat prosesnya
+    exp: 1,
+
+    run: async (xp, m, { args, chat, cmd, prefix }) => {
+      try {
+        const msg = m.message
+
+        // ✨ PERBAIKAN: Deteksi reply dari dalam pesan teks MAUPUN pesan gambar
+        const contextInfo = msg?.extendedTextMessage?.contextInfo || msg?.imageMessage?.contextInfo
+        const q = contextInfo?.quotedMessage
+
+        // Cek apakah ada gambar yang di-reply (Target) DAN gambar yang sedang dikirim (Wajah)
+        const isQuotedImage = q?.imageMessage
+        const isCurrentImage = msg?.imageMessage
+
+        if (!isQuotedImage || !isCurrentImage) {
+          return xp.sendMessage(chat.id, { 
+            text: `⚠️ *Cara Penggunaan Salah!*\n\nFitur ini butuh 2 gambar.\n\n💬 *Cara Pakai:*\n1. Cari gambar *Target* (tubuh yang mau ditukar wajahnya).\n2. *Reply/Balas* gambar target tersebut.\n3. Sambil me-reply, kirimkan gambar *Wajah Pengganti* dengan caption *${prefix}${cmd}*.` 
+          }, { quoted: m })
+        }
+
+        await xp.sendMessage(chat.id, { react: { text: '⏳', key: m.key } })
+        await xp.sendMessage(chat.id, { text: '⚙️ _Sedang memproses tukar wajah. Ini mungkin memakan waktu hingga 1 menit..._' }, { quoted: m })
+
+        // 1. Download kedua gambar
+        // Untuk target, ambil dari q (quoted). Untuk wajah, ambil dari m.message saat ini.
+        const bufferTarget = await downloadMediaMessage({ message: q }, 'buffer') // url1
+        const bufferFace = await downloadMediaMessage(m, 'buffer') // url2
+
+        if (!bufferTarget || !bufferFace) throw new Error('Gagal mengunduh salah satu gambar dari WhatsApp.')
+
+        // ==========================================
+        // FUNGSI UPLOAD KE NEOAPIS
+        // ==========================================
+        const uploadNeoApi = async (fileBuffer, typeName) => {
+          const fileInfo = await fileTypeFromBuffer(fileBuffer)
+          const ext = fileInfo ? fileInfo.ext : 'jpg'
+          const mime = fileInfo ? fileInfo.mime : 'image/jpeg'
+          const fileName = `faceswap_${typeName}_${Date.now()}.${ext}`
+          const fileSize = fileBuffer.length
+
+          const presignRes = await axios.post('https://www.neoapis.xyz/uploader/presign', {
+            fileName, mimeType: mime, expiry: "permanent", fileSize
+          }, { headers: { 'Content-Type': 'application/json' } })
+
+          if (!presignRes.data?.status) throw new Error(`Gagal akses upload untuk gambar ${typeName}.`)
+          const { presignedUrl, fileUrl, expiresAt } = presignRes.data
+
+          await axios.put(presignedUrl, fileBuffer, { headers: { 'Content-Type': mime } })
+
+          await axios.post('https://www.neoapis.xyz/uploader/confirm', {
+            fileUrl, fileName, mimeType: mime, fileSize, expiry: "Permanent", expiresAt
+          }, { headers: { 'Content-Type': 'application/json' } })
+
+          return fileUrl
+        }
+
+        // 2. Upload kedua gambar untuk mendapatkan URL
+        const url1 = await uploadNeoApi(bufferTarget, 'target')
+        const url2 = await uploadNeoApi(bufferFace, 'face')
+
+        // ==========================================
+        // EKSEKUSI API FACE SWAP
+        // ==========================================
+        const apiUrl = `https://www.neoapis.xyz/api/tools/faceswap?url1=${encodeURIComponent(url1)}&url2=${encodeURIComponent(url2)}`
+
+        const res = await axios.get(apiUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          },
+          timeout: 60000, 
+          responseType: 'arraybuffer' 
+        })
+
+        if (!res.data || res.data.byteLength < 100) {
+            throw new Error('API tidak mengembalikan gambar yang valid.')
+        }
+
+        // 3. Kirim hasil
+        await xp.sendMessage(chat.id, {
+          image: Buffer.from(res.data),
+          caption: `🎭 *FACE SWAP BERHASIL*\n\nWajah telah sukses ditukar!\n> *Powered by Alya-Ai*`
+        }, { quoted: m })
+
+        await xp.sendMessage(chat.id, { react: { text: '✅', key: m.key } })
+
+      } catch (e) {
+        console.error(`Error pada command ${cmd}:`, e.message || e)
+        await xp.sendMessage(chat.id, { react: { text: '❌', key: m.key } })
+        
+        if (e.message?.includes('timeout') || e.code === 'ECONNABORTED') {
+            await xp.sendMessage(chat.id, { text: `❌ Waktu tunggu habis. Server API sedang sibuk melakukan proses AI, coba lagi nanti.` }, { quoted: m })
+        } else {
+            await xp.sendMessage(chat.id, { text: `❌ Gagal memproses Face Swap.\n*Detail:* ${e.message}` }, { quoted: m })
+        }
+      }
+    }
+  })
+  
   ev.on({
     name: 'enigma2text',
     cmd: ['enigma2text', 'en2text', 'en2txt'],
@@ -351,6 +458,97 @@ export default function tools(ev) {
     }
   })
   
+    ev.on({
+    name: 'cek nomor',
+    cmd: ['cekwa', 'ceknomor', 'checkwa'],
+    tags: 'Tools Menu',
+    desc: 'Mengecek status nomor WhatsApp (Aktif/Kenon)',
+    owner: !1,
+    prefix: !0,
+    money: 10,
+    exp: 0.1,
+
+    run: async (xp, m, { args, chat, cmd, prefix }) => {
+      try {
+        if (!args[0]) {
+          return xp.sendMessage(chat.id, { 
+              text: `⚠️ *Format Salah!*\n\nMasukkan nomor yang ingin dicek.\n\n💬 *Contoh:* ${prefix}${cmd} 6281234567890` 
+          }, { quoted: m })
+        }
+
+        await xp.sendMessage(chat.id, { react: { text: '⏳', key: m.key } })
+
+        // 1. Membersihkan nomor dari karakter aneh (spasi, strip, tanda +)
+        let no = args.join('').replace(/[^0-9]/g, '')
+        
+        // Konversi awalan '0' menjadi '62' (Kode negara Indonesia)
+        if (no.startsWith('0')) no = '62' + no.slice(1) 
+        
+        const targetJid = `${no}@s.whatsapp.net`
+
+        // 2. Mengecek eksistensi nomor di database WhatsApp
+        const cekWa = await xp.onWhatsApp(no)
+
+        // Jika array kosong atau exists: false, berarti Kenon / Tidak Terdaftar
+        if (cekWa.length === 0 || !cekWa[0].exists) {
+          let txt = `🔍 *HASIL CEK NOMOR*\n\n`
+          txt += `📱 *Nomor:* ${no}\n`
+          txt += `☠️ *Status:* Tidak Terdaftar / Banned (Kenon)\n\n`
+          txt += `> _Nomor ini tidak ditemukan di server Meta. Kemungkinan belum pernah didaftarkan, atau akunnya sudah dihapus/diblokir permanen._`
+          
+          await xp.sendMessage(chat.id, { text: txt }, { quoted: m })
+          return xp.sendMessage(chat.id, { react: { text: '✅', key: m.key } })
+        }
+
+        // 3. Jika Aktif, mari kita intip Bio dan Foto Profilnya
+        let bio = 'Tidak ada bio / Privasi disembunyikan'
+        let bioDate = '-'
+        
+        // Mengambil Bio/Status
+        try {
+          const statusData = await xp.fetchStatus(targetJid)
+          if (statusData && statusData.status) {
+            bio = statusData.status
+            // Konversi format tanggal bawaan Baileys
+            const date = new Date(statusData.setAt)
+            bioDate = `${date.getDate().toString().padStart(2, '0')}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getFullYear()}`
+          }
+        } catch (e) {
+          // Gagal ambil bio (karena setingan privasi target)
+        }
+
+        // Mengambil Foto Profil
+        let ppUrl = 'https://c.termai.cc/i0/7DbG.jpg' // Gambar default jika PP kosong
+        try {
+          ppUrl = await xp.profilePictureUrl(targetJid, 'image')
+        } catch (e) {
+          // Gagal ambil PP (karena privasi atau target tidak pasang foto)
+        }
+
+        // 4. Menyusun Laporan Intel
+        let txt = `🔍 *HASIL CEK NOMOR*\n\n`
+        txt += `📱 *Nomor:* ${no}\n`
+        txt += `✅ *Status:* Aktif / Terdaftar\n`
+        txt += `💬 *Bio/Info:* ${bio}\n`
+        txt += `📅 *Update Bio:* ${bioDate}\n`
+        txt += `🔗 *Link Chat:* wa.me/${no}\n`
+
+        // Mengirimkan hasil lengkap dengan gambar PP
+        await xp.sendMessage(chat.id, { 
+            image: { url: ppUrl }, 
+            caption: txt 
+        }, { quoted: m })
+
+        await xp.sendMessage(chat.id, { react: { text: '✅', key: m.key } })
+
+      } catch (e) {
+        console.error(`Error pada command ${cmd}:`, e)
+        await xp.sendMessage(chat.id, { react: { text: '❌', key: m.key } })
+        await xp.sendMessage(chat.id, { text: `❌ Terjadi kesalahan sistem saat mengecek nomor.` }, { quoted: m })
+      }
+    }
+  })
+  
   ev.on({
     name: 'wink / wink hd',
     cmd: ['wink', 'unblur'],
@@ -422,40 +620,82 @@ export default function tools(ev) {
   });
   
   ev.on({
-    name: "react teach",
-    cmd: ["reactreach","reach"],
-    tags: "Tools Menu",
-    desc: "Boost react postingan",
-    prefix: true,
+    name: 'fake react channel',
+    cmd: ['rch', 'frch', 'fakereactch', 'fakerch', 'reactch'],
+    tags: 'Tools Menu',
+    desc: 'Mengirim banyak reaction ke postingan saluran/channel WA',
+    owner: !1, // Bisa diset !0 kalau mau khusus Owner
+    prefix: !0,
+    money: 20, // Kasih harga agak mahal karena pakai API rahasia
+    exp: 1,
 
-    run: async (xp, m, {
-      args,
-      chat,
-      cmd,
-      store
-    }) => {
-
-        if(args.length < 2){
-            return xp.sendMessage(chat.id,{
-                text: "Contoh:\n.reach https://postingan.com 👍"
-            },{quoted:m})
+    run: async (xp, m, { args, chat, cmd, prefix }) => {
+      try {
+        if (args.length < 2) {
+            return xp.sendMessage(chat.id, { 
+                text: `⚠️ *Format Salah!*\n\nGunakan format:\n${prefix}${cmd} <link_post> <emoji>\n\n📌 *Contoh:*\n${prefix}${cmd} https://whatsapp.com/channel/xxx/123 😂 😱` 
+            }, { quoted: m })
         }
 
-        let url = args[0]
-          
-        // Mengambil semua argumen setelah URL, menggabungkannya, dan menghapus tanda koma
-        let emoji = args.slice(1).join('').replace(/,/g, '')
+        const link = args[0]
+        
+        // Menggabungkan sisa argumen menjadi emoji, membersihkan koma, memisahkan spasi, dan menggabungkannya kembali dengan koma untuk dikirim ke API
+        const emoji = args.slice(1).join(" ").replace(/,/g, " ").split(/\s+/).filter(e => e.trim()).join(",")
 
-        await xp.sendMessage(chat.id,{
-            text:"⏳ Mengirim react boost..."
-        },{quoted:m})
+        await xp.sendMessage(chat.id, { react: { text: '⏳', key: m.key } })
 
-        let result = await reactBoostReach(url, emoji)
- 
-        await xp.sendMessage(chat.id,{
-            text: result.message
-        },{quoted:m})
-  
+        let success = false
+        let lastError = 'Unknown error'
+
+        // Mengambil daftar API key dari global variables bot kamu
+        // Pastikan array global.frch sudah diisi di file setting/config kamu!
+        const apiKeys = ["fe90001b48eef66839590b4d322a4660e927c1a5408e92fff62534c39a2b1510"]
+        
+        if (apiKeys.length === 0) {
+            await xp.sendMessage(chat.id, { react: { text: '❌', key: m.key } })
+            return xp.sendMessage(chat.id, { text: `❌ *Sistem Error:*\nAPI Key (global.frch) belum diisi di pengaturan bot!` }, { quoted: m })
+        }
+
+        // Loop untuk mencoba semua API Key sampai ada yang berhasil
+        for (const apiKey of apiKeys) {
+            try {
+                const response = await axios.post('https://foreign-marna-sithaunarathnapromax-9a005c2e.koyeb.app/api/channel/react-to-post', {
+                    post_link: link,
+                    reacts: emoji
+                }, {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`
+                    }
+                })
+
+                if (response.data) {
+                    let teks = `✅ *React Sent!*\n\n🔗 *Target:* ${link}\n🎭 *Emoji:* ${emoji.replace(/,/g, ' ')}\n\n🚀 *Powered by Alya-Ai*`
+                    
+                    await xp.sendMessage(chat.id, { react: { text: '✅', key: m.key } })
+                    await xp.sendMessage(chat.id, { text: teks }, { quoted: m })
+                    
+                    success = true
+                    break // Hentikan loop jika berhasil
+                }
+            } catch (e) {
+                // Tangkap error dan lanjut coba API key berikutnya
+                lastError = e.response?.data?.message || e.message || 'Terjadi Kesalahan Sistem'
+            }
+        }
+
+        // Jika semua API Key gagal/habis limit
+        if (!success) {
+            let teks = `❌ *GAGAL MENGIRIM REAKSI*\n\n📝 *Detail Error:* ${lastError}`
+            await xp.sendMessage(chat.id, { react: { text: '❌', key: m.key } })
+            await xp.sendMessage(chat.id, { text: teks }, { quoted: m })
+        }
+
+      } catch (e) {
+        console.error(`Error pada command ${cmd}:`, e)
+        if (typeof err === 'function') err(`error pada ${cmd}`, e)
+        if (typeof call === 'function') call(xp, e, m)
+      }
     }
   })
 
@@ -1044,71 +1284,124 @@ export default function tools(ev) {
     name: 'to url',
     cmd: ['tourl', 'url'],
     tags: 'Tools Menu',
-    desc: 'mengubah media menjadi url',
+    desc: 'Mengubah media menjadi URL (NeoAPIs)',
     owner: !1,
     prefix: !0,
     money: 500,
     exp: 0.1,
 
-    run: async (xp, m, {
-      chat,
-      cmd
-    }) => {
+    run: async (xp, m, { chat, cmd }) => {
       try {
-        const q = m.message?.extendedTextMessage?.contextInfo?.quotedMessage,
-              media = ['imageMessage','videoMessage','documentMessage','audioMessage']
-                .map(v => m.message?.[v] || q?.[v])
-                .find(Boolean),
-              name = chat.pushName,
-              time = global.time.timeIndo("Asia/Jakarta", "HH")
+        const q = m.message?.extendedTextMessage?.contextInfo?.quotedMessage
+        const media = ['imageMessage', 'videoMessage', 'documentMessage', 'audioMessage']
+          .map(v => m.message?.[v] || q?.[v])
+          .find(Boolean)
+          
+        const name = chat.pushName || m.pushName || 'User'
+        const time = global.time ? global.time.timeIndo("Asia/Jakarta", "HH") : Date.now()
 
-        if (!media) return xp.sendMessage(chat.id, { text: 'reply media yang ingin dijadikan url' }, { quoted: m })
+        if (!media) return xp.sendMessage(chat.id, { text: '❌ Reply media yang ingin dijadikan URL!' }, { quoted: m })
 
+        await xp.sendMessage(chat.id, { react: { text: '⏳', key: m.key } })
+
+        // 1. Unduh media menjadi Buffer
         const mediadl = await downloadMediaMessage({ message: q || m.message }, 'buffer')
-        if (!mediadl) throw new Error('error saat mengunduh')
+        if (!mediadl) throw new Error('Error saat mengunduh media dari WA.')
 
-        const upload = async (file) => {
-          const { ext } = await fileTypeFromBuffer(file),
-                form = new fromdt()
+        // FUNGSI UPLOAD 3 TAHAP (NEOAPIS)
+        const uploadNeoApi = async (fileBuffer) => {
+          // Dapatkan ekstensi dan mimetype yang akurat
+          const fileInfo = await fileTypeFromBuffer(fileBuffer)
+          const ext = fileInfo ? fileInfo.ext : 'bin'
+          const mime = fileInfo ? fileInfo.mime : 'application/octet-stream'
+          
+          const fileName = `${name}-${time}.${ext}`
+          const fileSize = fileBuffer.length
 
-          form.append('file', file, { filename: `${name}-${time}.` + ext })
+          // TAHAP 1: Minta Akses Upload (Presign)
+          const presignRes = await axios.post('https://www.neoapis.xyz/uploader/presign', {
+            fileName: fileName,
+            mimeType: mime,
+            expiry: "permanent",
+            fileSize: fileSize
+          }, {
+            headers: { 'Content-Type': 'application/json' }
+          })
 
-          const url = await axios.post(`https://c.termai.cc/api/upload?key=AIzaBj7z2z3xBjsk`, form, { headers: form.getHeaders() })
+          if (!presignRes.data?.status) throw new Error('Gagal mendapatkan Presigned URL dari server.')
+          const { presignedUrl, fileUrl, expiresAt } = presignRes.data
 
-          return url.data
+          // TAHAP 2: Upload Data Biner (PUT) ke Cloud Storage
+          await axios.put(presignedUrl, fileBuffer, {
+            headers: {
+              'Content-Type': mime
+            }
+          })
+
+          // TAHAP 3: Konfirmasi Upload
+          await axios.post('https://www.neoapis.xyz/uploader/confirm', {
+            fileUrl: fileUrl,
+            fileName: fileName,
+            mimeType: mime,
+            fileSize: fileSize,
+            expiry: "Permanent",
+            expiresAt: expiresAt
+          }, {
+            headers: { 'Content-Type': 'application/json' }
+          })
+
+          return {
+            url: fileUrl,
+            mimetype: mime,
+            size: fileSize
+          }
         }
 
-        const res = await upload(mediadl)
+        // Eksekusi fungsi upload
+        const res = await uploadNeoApi(mediadl)
 
-        if (!res) return xp.sendMessage(chat.id, { text: 'error pada api' }, { quoted: m })
+        if (!res) return xp.sendMessage(chat.id, { text: '❌ Gagal mengunggah file ke server.' }, { quoted: m })
 
-        let txt = `upload file berhasil\n\n`
-            txt += `${head}${opb} *${botName}* ${clb}\n`
-            txt += `${body} ${btn} *url:* ${res.path}\n`
-            txt += `${body} ${btn} *type:* ${res.mimetype}\n`
-            txt += `${body} ${btn} *size:* ${res.size}\n`
-            txt += `${foot}${line}`
+        // Konversi ukuran byte ke KB / MB untuk tampilan
+        const formatSize = res.size > 1048576 
+            ? `${(res.size / 1048576).toFixed(2)} MB` 
+            : `${(res.size / 1024).toFixed(2)} KB`
+
+        // Format pesan menggunakan variabel bawaan template-mu
+        let txt = `✅ Upload file berhasil\n\n`
+        // Pastikan variabel head, opb, botName, clb, body, btn, foot, line, thumbnail sudah terdefinisi di file globalmu
+        txt += `${global.head || ''}${global.opb || ''} *${global.botName || 'Code_Bot'}* ${global.clb || ''}\n`
+        txt += `${global.body || '│'} ${global.btn || '▸'} *URL:* ${res.url}\n`
+        txt += `${global.body || '│'} ${global.btn || '▸'} *Type:* ${res.mimetype}\n`
+        txt += `${global.body || '│'} ${global.btn || '▸'} *Size:* ${formatSize}\n`
+        txt += `${global.foot || '└'}${global.line || '──'}`
 
         await xp.sendMessage(chat.id, {
           text: txt,
           contextInfo: {
             externalAdReply: {
-              body: `terima kasih telah menggunakan ${botName}`,
-              thumbnailUrl: thumbnail,
+              body: `Terima kasih telah menggunakan ${global.botName || 'Code_Bot'}`,
+              thumbnailUrl: global.thumbnail || res.url, // Menggunakan gambar yang diupload sebagai thumbnail jika ada
               mediaType: 1,
               renderLargerThumbnail: !0
             },
             forwardingScore: 1,
             isForwarded: !0,
             forwardedNewsletterMessageInfo: {
-              newsletterJid: idCh,
-              newsletterName: footer
+              newsletterJid: global.idCh || '',
+              newsletterName: global.footer || 'Info Bot'
             }
           }
         })
+
+        await xp.sendMessage(chat.id, { react: { text: '✅', key: m.key } })
+
       } catch (e) {
-        err(`error pada ${cmd}`, e)
-        call(xp, e, m)
+        console.error(`Error pada ${cmd}:`, e)
+        // Jika global function err & call tidak terbaca, gunakan fallback ini:
+        if (typeof err === 'function') err(`error pada ${cmd}`, e)
+        if (typeof call === 'function') call(xp, e, m)
+        else xp.sendMessage(chat.id, { text: `❌ Terjadi kesalahan: ${e.message}` }, { quoted: m })
       }
     }
   })

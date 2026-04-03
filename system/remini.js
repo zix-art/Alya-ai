@@ -136,12 +136,13 @@ class WinkClient {
     return { prepareMsgId: delivery.prepare_msg_id };
   }
 
-  async waitForResult(task, timeoutMs = 60000) {
+  // ✨ PERBAIKAN: Batas waktu tunggu diubah jadi 240000 ms (4 Menit)
+  async waitForResult(task, timeoutMs = 240000) {
     const deadline = Date.now() + timeoutMs;
     let msgId = task.prepareMsgId;
 
     while (Date.now() < deadline) {
-      await sleep(2000);
+      await sleep(3000); // Jeda juga aku naikin dikit jadi 3 detik biar gak terlalu nyepam server API-nya
       let res;
       try {
         res = await this.http.get('/api/meitu_ai/query_batch.json', {
@@ -167,7 +168,7 @@ class WinkClient {
         return media[0].media_data;
       }
     }
-    throw new Error('Timeout! Proses terlalu lama.');
+    throw new Error('Timeout! Antrean di server AI sedang sangat penuh, coba lagi nanti.');
   }
 }
 
@@ -179,7 +180,9 @@ export async function processRemini(filePath, type = 'hd') {
   await client.init();
   const upload = await client.uploadFile(filePath);
   const task = await client.submitTask(upload, taskCfg);
-  const resultUrl = await client.waitForResult(task);
+  
+  // Memanggil wait dengan timeout 4 menit
+  const resultUrl = await client.waitForResult(task, 240000); 
   
   return resultUrl;
 }

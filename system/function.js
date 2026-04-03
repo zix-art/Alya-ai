@@ -134,58 +134,27 @@ async function filter(xp, m, text) {
         .test(t.trim().replace(/\s+/g, '').replace(/\/{2,}/g, '/')),
 
     antiLink: async () => {
-      const txt = m.message?.extendedTextMessage?.text
-      if (!gcData || !botAdm) return
+      const txt = m.message?.extendedTextMessage?.text || m.message?.conversation || ''
+      if (!gcData || !botAdm) return !1
 
       const isLink = await filter.link(txt)
-      return (gcData?.filter?.antilink && botAdm && !usrAdm && isLink)
-        ? await xp.sendMessage(chat.id, { delete: m.key }).catch(() => {})
-        : !1
-    },
-    
-    antiCh: async () => {
-      try {
-        // Ambil tipe pesan (bisa teks, gambar, atau video)
-        const msgType = Object.keys(m.message || {})[0]
-        const contextInfo = m.message?.[msgType]?.contextInfo
+      
+      // Jika Antilink aktif, bot adalah admin, user BUKAN admin, dan pesan mengandung link
+      if (gcData?.filter?.antilink && botAdm && !usrAdm && isLink) {
         
-        // Deteksi apakah pesan diteruskan dari Saluran (Newsletter)
-        const isFromChannel = !!contextInfo?.forwardedNewsletterMessageInfo
-
-        if (!isFromChannel || !gcData || !botAdm) return !1
-
-        // Pastikan fitur anti-channel aktif di database grup
-        const isAntiChActive = gcData?.filter?.antich
-        if (!isAntiChActive) return !1
-
-        // Identifikasi ID dan Nomor Pengirim
+        // Ambil ID WhatsApp pengirim pesan
         const senderJid = m.key.participant || m.participant
-        const senderNum = senderJid.split('@')[0]
 
-        // Pengecekan Owner langsung dari config.json
-        let isOwner = false
-        try {
-          const configPath = path.join(dirname, '../set/config.json') 
-          const cfg = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
-          const ownerNums = cfg.ownerSetting?.ownerNumber || []
-          isOwner = ownerNums.includes(senderNum)
-        } catch (errConfig) {}
+        // 1. Hapus pesan yang berisi link tersebut secara diam-diam
+        await xp.sendMessage(chat.id, { delete: m.key }).catch(() => {})
 
-        // Jika diteruskan dari saluran, BUKAN admin, dan BUKAN owner
-        if (isFromChannel && !usrAdm && !isOwner) {
-          
-          // Hapus pesannya
-          await xp.sendMessage(chat.id, { delete: m.key }).catch(() => {})
+        // 2. Langsung Kick (Keluarkan) pelakunya dari grup tanpa notifikasi
+        await xp.groupParticipantsUpdate(chat.id, [senderJid], 'remove').catch(() => {})
 
-          return !0 // Hentikan proses filter
-        }
-
-        return !1
-
-      } catch (e) {
-        console.error("❌ Error di fitur antiCh:", e)
-        return !1
+        return !0 // Menghentikan proses baca pesan lainnya
       }
+      
+      return !1
     },
     
     antiBadSticker: async () => {
@@ -193,54 +162,37 @@ async function filter(xp, m, text) {
         const isSticker = m.message?.stickerMessage
         if (!isSticker || !isSticker.fileSha256 || !gcData || !botAdm) return !1
 
-        // Ambil daftar hash stiker terlarang
         const badStickers = gcData?.filter?.badStickers || []
         if (badStickers.length === 0) return !1
 
-        // Identifikasi ID dan Nomor Pengirim
         const senderJid = m.key.participant || m.participant
         const senderNum = senderJid.split('@')[0]
         
-        // Pengecekan Whitelist (VVIP)
         const whitelist = gcData?.filter?.whitelistSticker || []
         const isWhitelisted = whitelist.includes(senderJid)
 
-        // Pengecekan Owner langsung dari config.json
         let isOwner = false
         try {
-          // Karena file ini di folder system, kita naik 1 folder (../) lalu ke set/config.json
-          // Sesuaikan '../set/config.json' menjadi './set/config.json' jika dirname kamu mengarah ke folder utama
           const configPath = path.join(dirname, '../set/config.json') 
           const cfg = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
           const ownerNums = cfg.ownerSetting?.ownerNumber || []
           
           isOwner = ownerNums.includes(senderNum)
-        } catch (errConfig) {
-          console.error("Gagal membaca config.json:", errConfig.message)
-        }
+        } catch (errConfig) {}
 
-        // Ambil sidik jari (hash) stikernya
         const stickerHash = Buffer.from(isSticker.fileSha256).toString('base64')
 
-        // Jika stiker dilarang, DAN pengirim BUKAN admin, BUKAN owner, DAN BUKAN whitelist
         if (badStickers.includes(stickerHash) && !usrAdm && !isOwner && !isWhitelisted) {
-          
-          // Hapus stikernya
           await xp.sendMessage(chat.id, { delete: m.key }).catch(() => {})
-          
-          // Peringatkan pelaku
           await xp.sendMessage(chat.id, { 
             text: `⚠️ @${senderNum} Kamu tidak memiliki izin untuk mengirim stiker tersebut di grup ini!`,
             mentions: [senderJid]
           }).catch(() => {})
 
-          return !0 // Hentikan proses filter
+          return !0 
         }
-
         return !1
-
       } catch (e) {
-        console.error("❌ Error di fitur antiBadSticker:", e)
         return !1
       }
     },
@@ -249,26 +201,18 @@ async function filter(xp, m, text) {
       const isStatusMention = m.message?.groupStatusMentionMessage
       if (!gcData || !botAdm) return !1
 
-      // Jika fitur aktif, bot adalah admin, user BUKAN admin, dan pesan adalah Tag SW
       if (gcData?.filter?.antitagsw && botAdm && !usrAdm && isStatusMention) {
-        // Ambil ID WhatsApp pelakunya
         const senderJid = m.key.participant || m.participant
 
-        // 1. Hapus pesan Tag SW-nya
         await xp.sendMessage(chat.id, { delete: m.key }).catch(() => {})
-
-        // 2. Beri pesan notifikasi ke grup (Opsional, biar member lain tahu)
         await xp.sendMessage(chat.id, { 
           text: `🚫 *ANTI TAG STATUS*\n\n@${senderJid.split('@')[0]} otomatis dikeluarkan dari grup karena mengirim Tag Status Broadcast.`,
           mentions: [senderJid]
         }).catch(() => {})
-
-        // 3. Kick (Keluarkan) pelakunya dari grup
         await xp.groupParticipantsUpdate(chat.id, [senderJid], 'remove').catch(() => {})
 
-        return !0 // Menghentikan proses filter lain karena user sudah di-kick
+        return !0 
       }
-      
       return !1
     },
 
@@ -346,8 +290,35 @@ async function filter(xp, m, text) {
 }
 
 async function cekSpam(xp, m) {
-  const chat = global.chat(m),
-        user = m.key.participant || chat.sender,
+  const chat = global.chat(m)
+
+  // ==========================================
+  // 🔒 SISTEM BLOKIR GRUP TIDAK TERDAFTAR
+  // Diinjeksi di sini agar bot diam saat dipanggil di grup ilegal
+  // ==========================================
+  if (chat.group) {
+      // Mengambil data grup. Jika hasilnya undefined/null, berarti grup belum daftar.
+      const isRegistered = !!(typeof getGc === 'function' ? getGc(chat) : null)
+      
+      const senderNum = chat.sender?.split('@')[0] || ''
+      const ownerNum = [].concat(global.ownerNumber || []).map(n => n?.replace(/[^0-9]/g, ''))
+      const isOwner = ownerNum.includes(senderNum)
+
+      // Membaca isi pesan untuk mengecek apakah itu perintah "daftargc"
+      const text = m.message?.conversation || m.message?.extendedTextMessage?.text || m.message?.imageMessage?.caption || ''
+      const txtLow = text.toLowerCase()
+      
+      // Berikan izin HANYA untuk perintah daftar
+      const isDaftarCmd = txtLow.includes('daftargc') || txtLow.includes('daftargrup') || txtLow.includes('sewa')
+
+      // Jika grup belum terdaftar, bukan command pendaftaran, dan pengirimnya bukan owner
+      if (!isRegistered && !isDaftarCmd && !isOwner) {
+          return !0 // Return true = Dianggap Spam/Diblokir secara diam-diam (Silent)
+      }
+  }
+  // ==========================================
+
+  const user = m.key.participant || chat.sender,
         usrData = Object.values(db().key).find(u => u.jid === user),
         now = Date.now(),
         target = m.key?.jadibot
@@ -370,9 +341,7 @@ async function cekSpam(xp, m) {
     spamData[target].time.last = now
 
     if (spamData[target].count >= 2) {
-
       await xp.sendMessage(chat.id, { text: 'jangan spam' }, { quoted: m })
-
       return spamData[target].count = 0, !0
     }
     return !1

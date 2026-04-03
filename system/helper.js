@@ -19,6 +19,9 @@ const own = (m) => {
   return number.includes(sender)
 }
 
+// ==========================================
+// OPTIMASI RAM: Cache Sweeper
+// ==========================================
 const makeInMemoryStore = () => {
   const msg = {},
         loadMsg = async (remoteJid, stanzaId) =>
@@ -30,7 +33,8 @@ const makeInMemoryStore = () => {
               const jid = m.key?.remoteJid
               if (!jid) continue
 
-              const store = msg[jid] ||= { array: [] }
+              const store = msg[jid] ||= { array: [], lastUpdate: Date.now() }
+              store.lastUpdate = Date.now()
 
               if (!store.array.find(x => x.key?.id === m.key?.id)) {
                 store.array.push(m)
@@ -40,8 +44,18 @@ const makeInMemoryStore = () => {
           })
         }
 
+  setInterval(() => {
+    const now = Date.now()
+    for (const jid in msg) {
+      if (now - msg[jid].lastUpdate > 24 * 60 * 60 * 1000) {
+        delete msg[jid]
+      }
+    }
+  }, 60 * 60 * 1000)
+
   return { msg, bind, loadMsg }
 }
+// ==========================================
 
 const errDir = path.resolve('../temp'),
       errFile = path.join(errDir, 'error.json'),
