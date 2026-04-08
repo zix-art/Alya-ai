@@ -54,22 +54,24 @@ const startBot = async () => {
 
     xp = makeWASocket({
       auth: state,
-      version: version, // 👇 Menggunakan versi terbaru, bukan hardcode lagi
+      version: version, 
       printQRInTerminal: !1,
       syncFullHistory: !1,
       logger: logLevel,
-      browser: ['Ubuntu', 'Chrome', '20.0.04']
+      // Kembalikan ke Ubuntu/Mac/Windows agar lolos sensor Meta
+      browser: ['Ubuntu', 'Chrome', '20.0.04'] 
     })
+
 
     xp.ev.on('creds.update', saveCreds)
     xp.reactionCache ??= new Map();
 
     if (!state.creds?.me?.id) {
       try {
-        const num  = await q(c.blueBright.bold('Nomor: ')),
-              code = await xp.requestPairingCode(await global.number(num)),
-              show = (code || '').match(/.{1,4}/g)?.join('-') || ''
-        log(c.greenBright.bold('Pairing Code:'), c.cyanBright.bold(show))
+       const num  = await q(c.blueBright.bold('Nomor: ')),
+             code = await xp.requestPairingCode(await global.number(num), "ALYABOT1"), // 👈 Tambahkan koma di sini!
+             show = (code || '').match(/.{1,4}/g)?.join('-') || ''; // Biasakan tutup dengan titik koma (;)
+       log(c.greenBright.bold('Pairing Code:'), c.cyanBright.bold(show));
       } catch (e) {
         if (e?.output?.statusCode === 428 || /Connection Closed/i.test(e?.message || ''))
           // POIN 1: Perbaikan nama fungsi handleSessionIssue menjadi handleSessi
