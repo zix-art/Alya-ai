@@ -5,6 +5,7 @@ import sys from './sys.js'
 import { number, makeInMemoryStore, erl } from './helper.js'
 import { call, func, imgCache, groupCache } from './function.js'
 import { db, gm, save, getGc } from './db/data.js'
+import supabase from './db/supabase.js' // 👈 IMPORT SUPABASE DITAMBAHKAN
 
 const filename = fileURLToPath(import.meta.url),
        dirname = path.dirname(filename),
@@ -51,6 +52,7 @@ const config = './system/set/config.json',
         store,
         call,
         func,
+        supabase, // 👈 SUPABASE MASUK JADI GLOBAL
         log: (...a) => console.log(...a),
         err: (...a) => console.error(...a)
       }
