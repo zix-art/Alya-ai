@@ -12,6 +12,7 @@ import { autofarm, sambungkata, timerhistory, cost_robbery } from './system/game
 import getMessageContent from './system/msg.js'
 import { authFarm } from './system/db/data.js'
 import { rct_key } from './system/reaction.js'
+import { autoStikerProcess } from './system/autostiker.js'
 import { txtWlc, txtLft, mode, banned, bangc } from './system/sys.js'
 import { getMetadata, replaceLid, saveLidCache, cleanMsg, filter, imgCache, _imgTmp, afk, filterMsg } from './system/function.js'
 
@@ -177,6 +178,11 @@ const startBot = async () => {
         if (gcData) {
           const { usrAdm, botAdm } = await grupify(xp, m)
           if (gcData.filter?.mute && !usrAdm) return !1
+          
+          // ==========================================
+          // 🤖 EKSEKUSI AUTO STIKER
+          // ==========================================
+          await autoStikerProcess(xp, m, chat, usrAdm)
         }
 
         if (text || media) xp.reactionCache.set(m.key?.id, m)
