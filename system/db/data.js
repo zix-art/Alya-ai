@@ -1,6 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import supabase from './supabase.js' // 👈 Import Supabase
 
 const __filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(__filename)
@@ -137,47 +138,61 @@ const authUser = async (m) => {
 
     if (
       !chat.sender?.endsWith('@s.whatsapp.net') ||
-      e(db().key) ||
       (group && chat.sender && chat.sender !== chat.sender)
     ) return
 
-    const nama = chat.pushName?.trim().slice(0, 20)
-    let k = nama, i = 1
-    while (db().key[k]) k = `${nama}_${i++}`
+    const nama = chat.pushName?.trim().slice(0, 20) || 'Petualang'
 
-    db().key[k] = {
-      jid: chat.sender,
-      noId: randomId(m),
-      acc: time,
-      ban: !1,
-      cmd: 0,
-      exp: 0,
-      moneyDb: {
-        money: 2e5,
-        moneyInBank: 0
-      },
-      ai: {
-        bell: !1,
-        chat: 0,
-        role: listRole[0]
-      },
-      afk: {
-        status: !1,
-        reason: '',
-        afkStart: ''
-      },
-      game: {
-        farm: !1,
-        dead: !1,
-        robbery: {
-          cost: 3
+    // 1. Simpan ke JSON Lokal (Jika belum terdaftar)
+    if (!e(db().key)) {
+      let k = nama, i = 1
+      while (db().key[k]) k = `${nama}_${i++}`
+
+      db().key[k] = {
+        jid: chat.sender,
+        noId: randomId(m),
+        acc: time,
+        ban: !1,
+        cmd: 0,
+        exp: 0,
+        moneyDb: {
+          money: 2e5,
+          moneyInBank: 0
         },
-        buff: {},
-        debuff: {}
+        ai: {
+          bell: !1,
+          chat: 0,
+          role: listRole[0]
+        },
+        afk: {
+          status: !1,
+          reason: '',
+          afkStart: ''
+        },
+        game: {
+          farm: !1,
+          dead: !1,
+          robbery: {
+            cost: 3
+          },
+          buff: {},
+          debuff: {}
+        }
       }
+      save.db()
     }
 
-    save.db()
+    // 2. ✨ INTEGRASI SUPABASE CLOUD ✨
+    // Menyinkronkan data pengguna secara background ke Supabase.
+    // ignoreDuplicates: true memastikan data lama di cloud tidak keriset.
+    try {
+      await supabase.from('users').upsert([{ jid: chat.sender, name: nama }], { onConflict: 'jid', ignoreDuplicates: true })
+      await supabase.from('inventory').upsert([{ jid: chat.sender }], { onConflict: 'jid', ignoreDuplicates: true })
+      await supabase.from('game_stats').upsert([{ jid: chat.sender }], { onConflict: 'jid', ignoreDuplicates: true })
+    } catch (err) {
+      // Abaikan error jika koneksi sedang bermasalah agar bot tetap berjalan
+    }
+
   } catch (e) {
     console.error('error pada authUser', e)
   }
