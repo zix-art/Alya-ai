@@ -32,7 +32,7 @@ async function vn(xp, audio, m) {
   }
 }
 
-async function bell(txt, m, xp, voice = "dabi", pitch = 0, speed = 0.9) {
+async function bell(txt, m, xp, voice = "alya", pitch = 0, speed = 0.9) {
   const chat = global.chat(m),
         name = m?.pushName || chat.sender || 'tidak diketahui',
         usr = Object.values(db().key).find(u => u.jid === chat.sender),
