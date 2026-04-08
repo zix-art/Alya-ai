@@ -3,9 +3,13 @@ import fetch from 'node-fetch'
 import { fileTypeFromBuffer } from 'file-type'
 import fs from 'fs'
 import path from 'path'
+import { ChatGPT } from '../../lib/scraper/chatgpt.js' 
 import { downloadMediaMessage } from 'baileys'
 const config = JSON.parse(fs.readFileSync('./system/set/config.json'))
 const komputerzKey = config.apikey.komputerz.key
+
+
+const gptSessions = new Map()
 
 // Fungsi untuk menangani request tipe Stream dari API Atha
 async function fetchAthaAI(prompt, sessionId) {
@@ -61,6 +65,84 @@ async function fetchAthaAI(prompt, sessionId) {
 }
 
 export default function ai(ev) {
+
+  ev.on({
+    name: 'ChatGPT Ai',
+    cmd: ['gpt', 'chatgpt'],
+    tags: 'Ai Menu',
+    desc: 'ChatGPT pintar bisa baca gambar & ingat obrolan',
+    owner: !1,
+    prefix: !0,
+
+    run: async (xp, m, { args, chat, prefix, cmd }) => {
+      try {
+        const text = args.join(' ')
+        const isQuotedImage = m.message?.extendedTextMessage?.contextInfo?.quotedMessage?.imageMessage
+        const isImage = m.message?.imageMessage
+        const imageMsg = isQuotedImage || isImage
+
+        if (!text && !imageMsg) {
+          return xp.sendMessage(chat.id, { 
+            text: `⚠️ *Cara Penggunaan:*\n\n1. Ketik *${prefix}${cmd} halo* untuk ngobrol.\n2. Kirim/Balas gambar dengan caption *${prefix}${cmd} jelaskan gambar ini*.\n\n_Ketik *${prefix}resetai* untuk menghapus ingatan AI._` 
+          }, { quoted: m })
+        }
+
+        await xp.sendMessage(chat.id, { text: '⏳ *Sedang berpikir...*' }, { quoted: m })
+
+        // Ambil ID user untuk memori sesi
+        const senderId = m.sender || m.key.participant || chat.id
+        const session = gptSessions.get(senderId) || {}
+
+        // Inisialisasi AI
+        const gpt = new ChatGPT({ lang: 'id-ID' })
+        const opts = {
+          conversationId: session.conversationId, // Lanjut obrolan
+          parentMessageId: session.messageId,     // Lanjut obrolan
+        }
+
+        let tmpFile = null
+
+        // Logika jika user mengirim gambar
+        if (imageMsg) {
+          const stream = await downloadContentFromMessage(imageMsg, 'image')
+          let buffer = Buffer.from([])
+          for await (const chunk of stream) {
+            buffer = Buffer.concat([buffer, chunk])
+          }
+          
+          // Simpan gambar sementara untuk dibaca AI
+          tmpFile = path.join(process.cwd(), `temp_gpt_${Date.now()}.jpg`)
+          fs.writeFileSync(tmpFile, buffer)
+          opts.imagePath = tmpFile // Masukkan path gambar ke opsi AI
+        }
+
+        // Teks default jika user hanya kirim gambar tanpa teks
+        const prompt = text || "Tolong jelaskan gambar apa ini secara detail."
+
+        // 🚀 EKSEKUSI KE CHATGPT SHANNZ
+        const res = await gpt.send(prompt, opts)
+
+        // Simpan sesi terbaru agar obrolan bisa nyambung terus
+        gptSessions.set(senderId, {
+          conversationId: res.conversationId,
+          messageId: res.messageId
+        })
+
+        // Hapus gambar sementara setelah selesai dibaca
+        if (tmpFile && fs.existsSync(tmpFile)) {
+          fs.unlinkSync(tmpFile)
+        }
+
+        // Kirim hasil ke WhatsApp
+        await xp.sendMessage(chat.id, { text: res.text }, { quoted: m })
+
+      } catch (e) {
+        console.error('Error GPT:', e)
+        await xp.sendMessage(chat.id, { text: `❌ Terjadi kesalahan sistem AI: ${e.message}` }, { quoted: m })
+      }
+    }
+  })
+  
   ev.on({
     name: 'imagine ai',
     cmd: ['imagine', 'flux'],
