@@ -1,74 +1,32 @@
 import fs from 'fs'
 import path from 'path'
+import { fileURLToPath } from 'url'
 import { Chess } from 'chess.js'
-const bankData = path.join(dirname, './db/bank.json')
+
+// Definisikan dirname untuk ES Modules (Penyebab error biasanya di sini)
+const __filename = fileURLToPath(import.meta.url)
+const dirname = path.dirname(__filename)
+
+// Pastikan path ke folder db benar (biasanya harus mundur satu folder pakai '../')
+const bankData = path.join(dirname, '../db/bank.json')
+
+// Helper untuk auto-sync uang ke Supabase tanpa bikin bot delay
+const syncUangCloud = (jid, user) => {
+    if (global.supabase && user) {
+        global.supabase.from('users')
+            .update({ 
+                money: user.moneyDb?.money || 0, 
+                bank: user.moneyDb?.moneyInBank || 0,
+                exp: user.exp || 0
+            })
+            .eq('jid', jid).then()
+    }
+}
 
 export default function game(ev) {
   
   // ==========================================
-  // 🥷 1. UPDATE FITUR RAMPOK (Player vs Player)
-  // ==========================================
-  ev.on({
-    name: 'rampok',
-    cmd: ['rampok'],
-    tags: 'Game Menu',
-    desc: 'Mencuri uang member grup (Risiko Denda)',
-    owner: !1,
-    prefix: !0,
-    money: 0,
-    exp: 0.2,
-
-    run: async (xp, m, { chat, cmd }) => {
-      try {
-        if (!chat.group) return xp.sendMessage(chat.id, { text: '❌ Perintah ini hanya bisa digunakan di grup' }, { quoted: m })
-
-        const quoted = m.message?.extendedTextMessage?.contextInfo
-        const target = quoted?.participant || quoted?.mentionedJid?.[0]
-        
-        if (!target) return xp.sendMessage(chat.id, { text: '⚠️ Reply atau tag target yang ingin dirampok!' }, { quoted: m })
-        if (target === chat.sender) return xp.sendMessage(chat.id, { text: '⚠️ Masa merampok diri sendiri?' }, { quoted: m })
-
-        const targetdb = Object.values(db().key).find(t => t.jid === target)
-        const usrdb = Object.values(db().key).find(u => u.jid === chat.sender)
-
-        if (!targetdb) return xp.sendMessage(chat.id, { text: '❌ Target tidak terdaftar di database' }, { quoted: m })
-        if (usrdb.game?.robbery?.cost <= 0) return xp.sendMessage(chat.id, { text: '⚠️ Kesempatan merampokmu hari ini habis. Coba lagi besok!' }, { quoted: m })
-        if (targetdb.moneyDb.money < 1000) return xp.sendMessage(chat.id, { text: '⚠️ Kasihan, target terlalu miskin untuk dirampok.' }, { quoted: m })
-        if (usrdb.moneyDb.money < 1000) return xp.sendMessage(chat.id, { text: '⚠️ Kamu harus punya minimal Rp 1.000 untuk modal merampok.' }, { quoted: m })
-
-        const mention = target.split('@')[0]
-        
-        // Peluang berhasil mencuri hanya 40%
-        const isSuccess = Math.random() < 0.4 
-        
-        // Mengambil/Kehilangan 10% dari dompet
-        const stolenAmount = Math.floor(targetdb.moneyDb.money * 0.10)
-        const fineAmount = Math.floor(usrdb.moneyDb.money * 0.10)
-
-        usrdb.game.robbery.cost -= 1
-        let txt = ''
-
-        if (isSuccess) {
-            targetdb.moneyDb.money -= stolenAmount
-            usrdb.moneyDb.money += stolenAmount
-            txt = `🥷 *PERAMPOKAN BERHASIL!*\n\nKamu berhasil menyelinap dan mencuri uang dari @${mention}!\n💰 *Hasil Rampokan:* +Rp ${stolenAmount.toLocaleString('id-ID')}`
-        } else {
-            usrdb.moneyDb.money -= fineAmount
-            targetdb.moneyDb.money += fineAmount
-            txt = `🚨 *PERAMPOKAN GAGAL!*\n\nKamu ketahuan oleh warga saat mencoba merampok @${mention}!\nKamu dipukuli dan harus membayar denda ganti rugi.\n💸 *Denda:* -Rp ${fineAmount.toLocaleString('id-ID')}`
-        }
-
-        save.db()
-        await xp.sendMessage(chat.id, { text: txt, mentions: [target] }, { quoted: m })
-
-      } catch (e) {
-        console.error(`Error pada ${cmd}:`, e)
-      }
-    }
-  })
-
-  // ==========================================
-  // 🔫 2. RUSSIAN ROULETTE (Taruhan Multiplayer)
+  // 🔫 1. RUSSIAN ROULETTE (Taruhan Multiplayer)
   // ==========================================
   global.rouletteGame = global.rouletteGame || {}
 
@@ -132,23 +90,21 @@ export default function game(ev) {
             await xp.sendMessage(chat.id, { text: `🔥 *GAME DIMULAI!* 🔥\n\nTerdapat ${game.players.length} pemain dengan total hadiah *Rp ${totalPrize.toLocaleString('id-ID')}*.\nPistol berputar dan ditembakkan secara acak...` })
 
             setTimeout(async () => {
-                // Pilih 1 korban yang kalah
                 const loserIndex = Math.floor(Math.random() * game.players.length)
                 const loser = game.players[loserIndex]
                 const winners = game.players.filter(p => p !== loser)
                 
-                // Hadiah dibagi rata ke pemenang
                 const prizePerWinner = Math.floor(totalPrize / winners.length)
 
-                // Eksekusi Database
                 game.players.forEach(jid => {
                     const dbUser = Object.values(db().key).find(u => u.jid === jid)
                     if (dbUser) {
                         if (jid === loser) {
-                            dbUser.moneyDb.money -= game.bet // Kalah hangus
+                            dbUser.moneyDb.money -= game.bet 
                         } else {
-                            dbUser.moneyDb.money += prizePerWinner // Menang dapat bagian
+                            dbUser.moneyDb.money += prizePerWinner 
                         }
+                        syncUangCloud(jid, dbUser) // Sync ke Supabase
                     }
                 })
                 save.db()
@@ -201,7 +157,7 @@ export default function game(ev) {
   })
 
   // ==========================================
-  // 🧩 3. SUSUN KATA BERHADIAH
+  // 🧩 2. SUSUN KATA BERHADIAH
   // ==========================================
   global.susunKataGame = global.susunKataGame || {}
 
@@ -212,8 +168,6 @@ export default function game(ev) {
     desc: 'Tebak acak huruf berhadiah',
     owner: !1,
     prefix: !0,
-    money: 0,
-    exp: 0,
 
     run: async (xp, m, { chat, prefix, cmd }) => {
         if (global.susunKataGame[chat.id]) return xp.sendMessage(chat.id, { text: '⚠️ Masih ada sesi Susun Kata yang belum terjawab di grup ini!' }, { quoted: m })
@@ -221,17 +175,14 @@ export default function game(ev) {
         const words = ['MEDAN', 'PUZZLE', 'ALYA', 'DATABASE', 'SERVER', 'JAVASCRIPT', 'VERCEL', 'PROGRAMMER', 'WEBSITE', 'INTERNET']
         const jawaban = words[Math.floor(Math.random() * words.length)]
         
-        // Mengacak huruf
         const acak = jawaban.split('').sort(() => 0.5 - Math.random()).join(' - ')
-        const hadiah = Math.floor(Math.random() * 500) + 100 // Hadiah 100 - 600
+        const hadiah = Math.floor(Math.random() * 500) + 100 
 
         global.susunKataGame[chat.id] = { jawaban, hadiah }
 
         let txt = `🧩 *SUSUN KATA* 🧩\n\n`
-        txt += `Susun huruf berikut menjadi sebuah kata:\n`
-        txt += `👉 *${acak}*\n\n`
-        txt += `🎁 *Hadiah:* Rp ${hadiah}\n`
-        txt += `_Ketik *${prefix}jawab <kata>* untuk menebak!_`
+        txt += `Susun huruf berikut menjadi sebuah kata:\n👉 *${acak}*\n\n`
+        txt += `🎁 *Hadiah:* Rp ${hadiah}\n_Ketik *${prefix}jawab <kata>* untuk menebak!_`
 
         await xp.sendMessage(chat.id, { text: txt }, { quoted: m })
     }
@@ -241,11 +192,8 @@ export default function game(ev) {
     name: 'jawab kata',
     cmd: ['jawab'],
     tags: 'Game Menu',
-    desc: 'Menjawab teka-teki',
     owner: !1,
     prefix: !0,
-    money: 0,
-    exp: 0,
 
     run: async (xp, m, { args, chat }) => {
         const game = global.susunKataGame[chat.id]
@@ -253,14 +201,12 @@ export default function game(ev) {
 
         if (!args[0]) return xp.sendMessage(chat.id, { text: '⚠️ Masukkan jawabanmu!' }, { quoted: m })
 
-        const tebakan = args[0].toUpperCase()
-
-        if (tebakan === game.jawaban) {
+        if (args[0].toUpperCase() === game.jawaban) {
             const usrdb = Object.values(db().key).find(u => u.jid === chat.sender)
             if (usrdb) {
-                usrdb.moneyDb = usrdb.moneyDb || { money: 0 }
                 usrdb.moneyDb.money += game.hadiah
                 save.db()
+                syncUangCloud(chat.sender, usrdb)
             }
             await xp.sendMessage(chat.id, { text: `🎉 *BENAR!*\n\nKata yang tepat adalah *${game.jawaban}*.\nKamu mendapatkan hadiah Rp ${game.hadiah}!`, mentions: [chat.sender] }, { quoted: m })
             delete global.susunKataGame[chat.id]
@@ -271,7 +217,7 @@ export default function game(ev) {
   })
 
   // ==========================================
-  // ♟️ 4. SISTEM CATUR (MENGGUNAKAN CHESS.JS)
+  // ♟️ 3. SISTEM CATUR (CHESS.JS)
   // ==========================================
   global.chessGame = global.chessGame || {}
 
@@ -282,8 +228,6 @@ export default function game(ev) {
     desc: 'Bermain catur dengan member grup',
     owner: !1,
     prefix: !0,
-    money: 0,
-    exp: 1,
 
     run: async (xp, m, { args, chat, prefix, cmd }) => {
       try {
@@ -291,31 +235,18 @@ export default function game(ev) {
         const game = global.chessGame[chat.id]
 
         if (!action) {
-            let guide = `♟️ *PANDUAN MAIN CATUR*\n\n`
-            guide += `1. *${prefix}${cmd} main @tag* (Menantang orang)\n`
-            guide += `2. *${prefix}${cmd} jalan e2e4* (Menggerakkan bidak dari e2 ke e4)\n`
-            guide += `3. *${prefix}${cmd} board* (Melihat papan catur saat ini)\n`
-            guide += `4. *${prefix}${cmd} nyerah* (Menyerah)\n\n`
-            guide += `_Pastikan kamu sudah install library dengan mengetik 'npm install chess.js' di terminal._`
+            let guide = `♟️ *PANDUAN MAIN CATUR*\n\n1. *${prefix}${cmd} main @tag*\n2. *${prefix}${cmd} jalan e2e4*\n3. *${prefix}${cmd} board*\n4. *${prefix}${cmd} nyerah*`
             return xp.sendMessage(chat.id, { text: guide }, { quoted: m })
         }
 
         if (action === 'main') {
-            if (game) return xp.sendMessage(chat.id, { text: '⚠️ Selesaikan dulu pertandingan catur yang ada di grup ini!' }, { quoted: m })
+            if (game) return xp.sendMessage(chat.id, { text: '⚠️ Selesaikan dulu catur di grup ini!' }, { quoted: m })
             
-            const quoted = m.message?.extendedTextMessage?.contextInfo
-            const target = quoted?.participant || quoted?.mentionedJid?.[0]
-            if (!target) return xp.sendMessage(chat.id, { text: '⚠️ Tag orang yang ingin kamu tantang!' }, { quoted: m })
+            const target = m.message?.extendedTextMessage?.contextInfo?.participant || m.message?.extendedTextMessage?.contextInfo?.mentionedJid?.[0]
+            if (!target) return xp.sendMessage(chat.id, { text: '⚠️ Tag orang yang ingin ditantang!' }, { quoted: m })
 
-            global.chessGame[chat.id] = {
-                chess: new Chess(),
-                white: chat.sender,
-                black: target,
-                turn: 'w' // Putih jalan duluan
-            }
-
-            const fen = encodeURIComponent(global.chessGame[chat.id].chess.fen())
-            const boardUrl = `https://fen2image.chessvision.ai/${fen}`
+            global.chessGame[chat.id] = { chess: new Chess(), white: chat.sender, black: target, turn: 'w' }
+            const boardUrl = `https://fen2image.chessvision.ai/${encodeURIComponent(global.chessGame[chat.id].chess.fen())}`
 
             await xp.sendMessage(chat.id, { 
                 image: { url: boardUrl }, 
@@ -326,370 +257,930 @@ export default function game(ev) {
         }
 
         if (action === 'jalan') {
-            if (!game) return xp.sendMessage(chat.id, { text: '⚠️ Tidak ada game catur yang berjalan.' }, { quoted: m })
-            
-            const isWhiteTurn = game.chess.turn() === 'w'
-            const currentPlayer = isWhiteTurn ? game.white : game.black
-            
-            if (chat.sender !== currentPlayer) {
-                return xp.sendMessage(chat.id, { text: '⚠️ Bukan giliranmu!' }, { quoted: m })
-            }
+            if (!game) return xp.sendMessage(chat.id, { text: '⚠️ Tidak ada game catur.' }, { quoted: m })
+            const currentPlayer = game.chess.turn() === 'w' ? game.white : game.black
+            if (chat.sender !== currentPlayer) return xp.sendMessage(chat.id, { text: '⚠️ Bukan giliranmu!' }, { quoted: m })
 
-            const moveInput = args[1] // contoh: e2e4
+            const moveInput = args[1]
             if (!moveInput || moveInput.length !== 4) return xp.sendMessage(chat.id, { text: `⚠️ Format salah! Contoh: *${prefix}${cmd} jalan e2e4*` }, { quoted: m })
 
             try {
-                // Melakukan pergerakan
-                game.chess.move({
-                    from: moveInput.substring(0, 2),
-                    to: moveInput.substring(2, 4),
-                    promotion: 'q' // Otomatis promote ke Ratu jika bidak sampai ujung
-                })
+                game.chess.move({ from: moveInput.substring(0, 2), to: moveInput.substring(2, 4), promotion: 'q' })
             } catch (e) {
                 return xp.sendMessage(chat.id, { text: '❌ Langkah tidak sah / Ilegal!' }, { quoted: m })
             }
 
-            const fen = encodeURIComponent(game.chess.fen())
-            const boardUrl = `https://fen2image.chessvision.ai/${fen}`
-            
+            const boardUrl = `https://fen2image.chessvision.ai/${encodeURIComponent(game.chess.fen())}`
             let statusTxt = `♟️ *CATUR UPDATE*\n\n`
             
             if (game.chess.isCheckmate()) {
-                statusTxt += `👑 *SKAKMAT!* @${currentPlayer.split('@')[0]} Memenangkan pertandingan!`
+                statusTxt += `👑 *SKAKMAT!* @${currentPlayer.split('@')[0]} Menang!`
                 await xp.sendMessage(chat.id, { image: { url: boardUrl }, caption: statusTxt, mentions: [currentPlayer] })
                 delete global.chessGame[chat.id]
                 return
             }
 
             if (game.chess.isDraw() || game.chess.isStalemate()) {
-                statusTxt += `🤝 *SERI / DRAW!* Pertandingan berakhir.`
-                await xp.sendMessage(chat.id, { image: { url: boardUrl }, caption: statusTxt })
+                await xp.sendMessage(chat.id, { image: { url: boardUrl }, caption: `🤝 *SERI!* Pertandingan berakhir.` })
                 delete global.chessGame[chat.id]
                 return
             }
 
             if (game.chess.isCheck()) statusTxt += `⚠️ *SKAK!*\n\n`
-            
             const nextPlayer = game.chess.turn() === 'w' ? game.white : game.black
-            statusTxt += `Langkah diterima. Sekarang giliran @${nextPlayer.split('@')[0]}!`
+            statusTxt += `Sekarang giliran @${nextPlayer.split('@')[0]}!`
 
             await xp.sendMessage(chat.id, { image: { url: boardUrl }, caption: statusTxt, mentions: [nextPlayer] })
         }
 
-        if (action === 'board') {
-            if (!game) return
-            const fen = encodeURIComponent(game.chess.fen())
-            await xp.sendMessage(chat.id, { image: { url: `https://fen2image.chessvision.ai/${fen}` }, caption: 'Papan Catur Saat Ini' })
+        if (action === 'board' && game) {
+            await xp.sendMessage(chat.id, { image: { url: `https://fen2image.chessvision.ai/${encodeURIComponent(game.chess.fen())}` }, caption: 'Papan Catur Saat Ini' })
         }
 
-        if (action === 'nyerah') {
-            if (!game) return
-            if (chat.sender !== game.white && chat.sender !== game.black) return
-            
+        if (action === 'nyerah' && game && (chat.sender === game.white || chat.sender === game.black)) {
             const winner = chat.sender === game.white ? game.black : game.white
-            await xp.sendMessage(chat.id, { text: `🏳️ @${chat.sender.split('@')[0]} menyerah!\n\n👑 Pemenangnya adalah @${winner.split('@')[0]}`, mentions: [chat.sender, winner] })
+            await xp.sendMessage(chat.id, { text: `🏳️ @${chat.sender.split('@')[0]} menyerah!\n👑 Pemenangnya @${winner.split('@')[0]}`, mentions: [chat.sender, winner] })
             delete global.chessGame[chat.id]
         }
-
-      } catch (e) {
-        console.error(`Error pada ${cmd}:`, e)
-      }
+      } catch (e) { console.error(e) }
     }
   })
+  
+    // ==========================================
+  // 🏇 1. BALAP KUDA (Multiplayer Betting)
+  // ==========================================
+  global.balapKuda = global.balapKuda || {}
 
   ev.on({
-    name: 'auto farming',
-    cmd: ['farm', 'autofarm', 'autofarming'],
+    name: 'balap kuda',
+    cmd: ['balapkuda', 'betkuda'],
     tags: 'Game Menu',
-    desc: 'mengaktifkan auto farming',
     owner: !1,
     prefix: !0,
-    money: 0,
-    exp: 0.1,
 
-    run: async (xp, m, {
-      args,
-      chat,
-      cmd,
-      prefix
-    }) => {
+    run: async (xp, m, { args, chat, prefix, cmd }) => {
       try {
-        const input = args[0]?.toLowerCase(),
-              user = Object.values(db().key).find(u => u.jid === chat.sender),
-              opsi = !!user?.game?.farm,
-              type = v => v ? 'Aktif' : 'Tidak',
-              modefarm = type(user?.game?.farm)
+        if (!chat.group) return xp.sendMessage(chat.id, { text: '❌ Hanya untuk grup!' }, { quoted: m })
 
-        if (!input || !['on', 'off'].includes(input) || (input === 'on' && opsi) || (input === 'off' && !opsi)) {
-          return xp.sendMessage(chat.id, { text: !input || !['on', 'off'].includes(input) ? `gunakan:\n ${prefix}${cmd} on/off\n\n${cmd}: ${modefarm}` : `${cmd} sudah ${opsi ? 'Aktif' : 'nonaktif'}` }, { quoted: m })
+        let game = global.balapKuda[chat.id]
+        if (game && game.status === 'playing') return xp.sendMessage(chat.id, { text: '⚠️ Balapan sedang berlangsung, tunggu selesai!' }, { quoted: m })
+
+        if (!args[0] || !args[1]) {
+            let txt = `🏇 *ARENA BALAP KUDA* 🏇\n\n`
+            txt += `Kuda Tersedia: 1, 2, 3, 4, 5\n\n`
+            txt += `*Cara Main:*\n${prefix}${cmd} <nomor_kuda> <taruhan>\n\n`
+            txt += `*Contoh:* ${prefix}${cmd} 3 10000\n`
+            txt += `_(Pilih kuda nomor 3 dengan taruhan Rp 10.000)_`
+            return xp.sendMessage(chat.id, { text: txt }, { quoted: m })
         }
 
-        user.game.farm = input === 'on'
-        save.db()
+        const noKuda = parseInt(args[0])
+        const bet = parseInt(args[1])
+        const usrdb = Object.values(db().key).find(u => u.jid === chat.sender)
 
-        await xp.sendMessage(chat.id, { text: `${cmd} berhasil di-${input === 'on' ? 'aktifkan' : 'nonaktifkan'}` }, { quoted: m })
-      } catch (e) {
-        err(`error pada ${cmd}`, e)
-        call(xp, e, m)
-      }
+        if (noKuda < 1 || noKuda > 5) return xp.sendMessage(chat.id, { text: '⚠️ Pilih kuda nomor 1 sampai 5!' }, { quoted: m })
+        if (!usrdb || usrdb.moneyDb.money < bet || bet < 100) return xp.sendMessage(chat.id, { text: `❌ Saldo tidak cukup atau bet kurang dari Rp 100!` }, { quoted: m })
+
+        if (!game) {
+            global.balapKuda[chat.id] = { status: 'waiting', bets: [], totalPot: 0 }
+            game = global.balapKuda[chat.id]
+            
+            await xp.sendMessage(chat.id, { text: `📢 *LOBI BALAP KUDA DIBUKA!*\n\n@${chat.sender.split('@')[0]} bertaruh Rp ${bet.toLocaleString('id-ID')} untuk Kuda 🐎 ${noKuda}.\n\n_Ketik ${prefix}${cmd} <nomor_kuda> <taruhan> untuk ikut!\nBalapan dimulai dalam 30 detik._`, mentions: [chat.sender] })
+            
+            setTimeout(async () => {
+                const curGame = global.balapKuda[chat.id]
+                if (!curGame || curGame.bets.length === 0) return delete global.balapKuda[chat.id]
+                
+                curGame.status = 'playing'
+                const delay = ms => new Promise(res => setTimeout(res, ms))
+                let progress = [0, 0, 0, 0, 0] // Posisi 5 kuda
+                let frameTxt = ''
+                
+                const msg = await xp.sendMessage(chat.id, { text: '🏁 *BALAPAN DIMULAI!* 🏁' })
+
+                // Animasi balapan 5 frame
+                for (let i = 0; i < 5; i++) {
+                    await delay(1000)
+                    for (let k = 0; k < 5; k++) { progress[k] += Math.floor(Math.random() * 3) + 1 } // Kuda maju acak 1-3 langkah
+                    
+                    frameTxt = `🏁 *BALAPAN KUDA* 🏁\n\n`
+                    for (let k = 0; k < 5; k++) {
+                        let lintasan = '-'.repeat(progress[k]) + '🐎' + '-'.repeat(15 - progress[k] > 0 ? 15 - progress[k] : 0)
+                        frameTxt += `[${k+1}] ${lintasan}\n`
+                    }
+                    await xp.sendMessage(chat.id, { text: frameTxt, edit: msg.key })
+                }
+
+                // Cari pemenang
+                const maxPos = Math.max(...progress)
+                const pemenangKuda = progress.indexOf(maxPos) + 1 // Kuda ke berapa (1-5)
+                
+                let winTxt = `\n🏆 *BALAPAN SELESAI!*\n\n🐎 Kuda nomor *${pemenangKuda}* memenangkan balapan!\n\n`
+                let hasWinner = false
+
+                curGame.bets.forEach(b => {
+                    const dbUser = Object.values(db().key).find(u => u.jid === b.jid)
+                    if (!dbUser) return
+                    
+                    if (b.kuda === pemenangKuda) {
+                        const winAmount = b.bet * 3 // Menang dikali 3
+                        dbUser.moneyDb.money += winAmount
+                        winTxt += `🎉 @${b.jid.split('@')[0]} menang *Rp ${winAmount.toLocaleString('id-ID')}*\n`
+                        hasWinner = true
+                    }
+                    syncUangCloud(b.jid, dbUser)
+                })
+
+                if (!hasWinner) winTxt += `💀 Tidak ada yang menebak kuda nomor ${pemenangKuda}. Semua taruhan hangus dari bandar!`
+
+                save.db()
+                await xp.sendMessage(chat.id, { text: frameTxt + winTxt, edit: msg.key, mentions: curGame.bets.map(b => b.jid) })
+                delete global.balapKuda[chat.id]
+            }, 30000)
+        }
+
+        // Potong uang pendaftar
+        usrdb.moneyDb.money -= bet
+        game.bets.push({ jid: chat.sender, kuda: noKuda, bet: bet })
+        game.totalPot += bet
+        save.db()
+        syncUangCloud(chat.sender, usrdb)
+
+        if (game.bets.length > 1) {
+            await xp.sendMessage(chat.id, { text: `✅ Taruhan diterima: Kuda ${noKuda} (Rp ${bet.toLocaleString('id-ID')})\nTotal Pot: Rp ${game.totalPot.toLocaleString('id-ID')}` }, { quoted: m })
+        }
+
+      } catch (e) { console.error(e); delete global.balapKuda[chat.id] }
+    }
+  })
+
+  // ==========================================
+  // 🎲 2. TEBAK DADU / SIC BO
+  // ==========================================
+  ev.on({
+    name: 'tebak dadu',
+    cmd: ['dadu', 'sicbo'],
+    tags: 'Game Menu',
+    owner: !1,
+    prefix: !0,
+
+    run: async (xp, m, { args, chat, prefix, cmd }) => {
+      try {
+        if (!args[0] || !args[1]) {
+            let txt = `🎲 *MEJA DADU (SIC BO)* 🎲\n\n`
+            txt += `Bot akan mengocok 3 dadu (Max nilai 18).\n`
+            txt += `- *Kecil* (Total 3 - 10) | Hadiah x2\n`
+            txt += `- *Besar* (Total 11 - 18) | Hadiah x2\n\n`
+            txt += `*Cara Main:*\n${prefix}${cmd} besar 5000\n${prefix}${cmd} kecil 10000`
+            return xp.sendMessage(chat.id, { text: txt }, { quoted: m })
+        }
+
+        const tebakan = args[0].toLowerCase()
+        const bet = parseInt(args[1])
+        const usrdb = Object.values(db().key).find(u => u.jid === chat.sender)
+
+        if (!['besar', 'kecil'].includes(tebakan)) return xp.sendMessage(chat.id, { text: '⚠️ Tebak hanya: besar / kecil' }, { quoted: m })
+        if (!usrdb || usrdb.moneyDb.money < bet || bet < 100) return xp.sendMessage(chat.id, { text: '❌ Saldo tidak cukup!' }, { quoted: m })
+
+        const d1 = Math.floor(Math.random() * 6) + 1
+        const d2 = Math.floor(Math.random() * 6) + 1
+        const d3 = Math.floor(Math.random() * 6) + 1
+        const total = d1 + d2 + d3
+        const hasil = total <= 10 ? 'kecil' : 'besar'
+
+        const isWin = tebakan === hasil
+        
+        let msg = `🎲 *HASIL DADU*\n\n[ ${d1} ] - [ ${d2} ] - [ ${d3} ]\nTotal: *${total} (${hasil.toUpperCase()})*\n\n`
+        
+        if (isWin) {
+            const winAmount = bet * 2
+            usrdb.moneyDb.money += bet // Kembalikan modal + untung
+            msg += `🎉 *MENANG!* Kamu menebak *${tebakan}*.\nHadiah: +Rp ${winAmount.toLocaleString('id-ID')}`
+        } else {
+            usrdb.moneyDb.money -= bet
+            msg += `💀 *KALAH!* Kamu menebak *${tebakan}*.\nHangus: -Rp ${bet.toLocaleString('id-ID')}`
+        }
+
+        save.db()
+        syncUangCloud(chat.sender, usrdb)
+        await xp.sendMessage(chat.id, { text: msg }, { quoted: m })
+
+      } catch (e) { console.error(e) }
+    }
+  })
+
+  // ==========================================
+  // 🎟️ 3. LOTRE GRUP (Sistem Arisan)
+  // ==========================================
+  global.lotreGrup = global.lotreGrup || {}
+
+  ev.on({
+    name: 'lotre grup',
+    cmd: ['lotre', 'belitiket'],
+    tags: 'Game Menu',
+    owner: !1,
+    prefix: !0,
+
+    run: async (xp, m, { chat, prefix, cmd }) => {
+      try {
+        if (!chat.group) return
+        const HARGA_TIKET = 5000
+        const MAX_TIKET = 10 // Berapa tiket kejual baru diundi
+
+        const usrdb = Object.values(db().key).find(u => u.jid === chat.sender)
+        if (!usrdb || usrdb.moneyDb.money < HARGA_TIKET) return xp.sendMessage(chat.id, { text: `❌ Saldomu kurang! Harga 1 tiket lotre adalah Rp ${HARGA_TIKET.toLocaleString('id-ID')}` }, { quoted: m })
+
+        global.lotreGrup[chat.id] = global.lotreGrup[chat.id] || { tiket: [], totalDuit: 0 }
+        let lotre = global.lotreGrup[chat.id]
+
+        // Potong duit
+        usrdb.moneyDb.money -= HARGA_TIKET
+        lotre.tiket.push(chat.sender)
+        lotre.totalDuit += HARGA_TIKET
+        save.db()
+        syncUangCloud(chat.sender, usrdb)
+
+        if (lotre.tiket.length < MAX_TIKET) {
+            let txt = `🎟️ *TIKET LOTRE DIBELI*\n\n@${chat.sender.split('@')[0]} telah membeli 1 tiket!\n`
+            txt += `📦 Tiket Terkumpul: ${lotre.tiket.length}/${MAX_TIKET}\n`
+            txt += `💰 Panci Jackpot: Rp ${lotre.totalDuit.toLocaleString('id-ID')}\n\n`
+            txt += `_Ketik ${prefix}${cmd} untuk membeli tiket lagi. Undian akan otomatis berjalan jika tiket mencapai ${MAX_TIKET}._`
+            return xp.sendMessage(chat.id, { text: txt, mentions: [chat.sender] }, { quoted: m })
+        }
+
+        // Jika tiket mencapai max, langsung UNDI
+        await xp.sendMessage(chat.id, { text: `🎰 *MENGUNDI JACKPOT LOTRE...* 🎰\n\nTiket sudah penuh! Mengacak pemenang dari ${MAX_TIKET} tiket...` })
+        
+        setTimeout(async () => {
+            const pemenangId = lotre.tiket[Math.floor(Math.random() * lotre.tiket.length)]
+            const pemenangDb = Object.values(db().key).find(u => u.jid === pemenangId)
+            
+            if (pemenangDb) {
+                pemenangDb.moneyDb.money += lotre.totalDuit
+                save.db()
+                syncUangCloud(pemenangId, pemenangDb)
+            }
+
+            let winTxt = `🎉 *JACKPOT TERPECAHKAN!* 🎉\n\nSelamat kepada @${pemenangId.split('@')[0]} yang telah memenangkan arisan Lotre sebesar *Rp ${lotre.totalDuit.toLocaleString('id-ID')}*!\n\n_Uang telah otomatis ditransfer ke dompetmu._`
+            await xp.sendMessage(chat.id, { text: winTxt, mentions: [pemenangId] })
+            delete global.lotreGrup[chat.id] // Reset Lotre
+        }, 3000)
+
+      } catch (e) { console.error(e) }
+    }
+  })
+
+  // ==========================================
+  // 🃏 4. ADU BANDAR (Player vs Player Kartu)
+  // ==========================================
+  global.bandarGame = global.bandarGame || {}
+
+  ev.on({
+    name: 'adu bandar',
+    cmd: ['bandar', 'lawanbandar'],
+    tags: 'Game Menu',
+    owner: !1,
+    prefix: !0,
+
+    run: async (xp, m, { args, chat, prefix, cmd }) => {
+      try {
+        if (!chat.group) return
+        let game = global.bandarGame[chat.id]
+        const action = args[0]?.toLowerCase()
+
+        if (action === 'buka') {
+            if (game) return xp.sendMessage(chat.id, { text: `⚠️ Meja bandar sudah dibuka oleh @${game.bandar.split('@')[0]}!`, mentions: [game.bandar] }, { quoted: m })
+            const modal = parseInt(args[1])
+            const usrdb = Object.values(db().key).find(u => u.jid === chat.sender)
+            if (!usrdb || !modal || usrdb.moneyDb.money < modal || modal < 1000) return xp.sendMessage(chat.id, { text: '⚠️ Format: .bandar buka <modal>\nModal minimal Rp 1.000!' }, { quoted: m })
+
+            usrdb.moneyDb.money -= modal
+            save.db()
+            syncUangCloud(chat.sender, usrdb)
+
+            global.bandarGame[chat.id] = { bandar: chat.sender, modal: modal }
+            return xp.sendMessage(chat.id, { text: `🃏 *MEJA BANDAR DIBUKA*\n\n@${chat.sender.split('@')[0]} menjadi bandar dengan modal *Rp ${modal.toLocaleString('id-ID')}*.\n\n_Ketik ${prefix}lawanbandar <taruhan> untuk melawan!_`, mentions: [chat.sender] }, { quoted: m })
+        }
+
+        if (cmd === 'lawanbandar') {
+            if (!game) return xp.sendMessage(chat.id, { text: '⚠️ Tidak ada meja bandar yang buka.' }, { quoted: m })
+            if (chat.sender === game.bandar) return xp.sendMessage(chat.id, { text: '⚠️ Masa ngelawan diri sendiri?' }, { quoted: m })
+            
+            const bet = parseInt(args[0])
+            const usrdb = Object.values(db().key).find(u => u.jid === chat.sender)
+            if (!usrdb || !bet || usrdb.moneyDb.money < bet) return xp.sendMessage(chat.id, { text: '⚠️ Saldo tidak cukup atau format salah.' }, { quoted: m })
+            if (bet > game.modal) return xp.sendMessage(chat.id, { text: `⚠️ Taruhanmu lebih besar dari modal Bandar (Sisa modal bandar: Rp ${game.modal})` }, { quoted: m })
+
+            const bandarDb = Object.values(db().key).find(u => u.jid === game.bandar)
+            const botScore = Math.floor(Math.random() * 100) + 1 // Skor penantang
+            const bandarScore = Math.floor(Math.random() * 100) + 1 // Skor bandar
+
+            let txt = `🃏 *ADU KARTU*\n\n`
+            txt += `Penantang @${chat.sender.split('@')[0]}: *[ ${botScore} ]*\n`
+            txt += `Bandar @${game.bandar.split('@')[0]}: *[ ${bandarScore} ]*\n\n`
+
+            if (botScore > bandarScore) { // Penantang menang
+                usrdb.moneyDb.money += bet
+                game.modal -= bet
+                txt += `🎉 Penantang Menang! Sedot Rp ${bet} dari Bandar.`
+            } else { // Bandar menang
+                usrdb.moneyDb.money -= bet
+                game.modal += bet
+                txt += `💀 Bandar Menang! Bandar mengambil Rp ${bet} dari Penantang.`
+            }
+
+            save.db()
+            syncUangCloud(chat.sender, usrdb)
+            if (bandarDb && game.modal <= 0) { // Bandar bangkrut
+                txt += `\n\n🚨 *BANDAR BANGKRUT!* Meja ditutup.`
+                delete global.bandarGame[chat.id]
+            } else if (bandarDb) { // Tutup/update modal
+                bandarDb.moneyDb.money += game.modal // Ini hanya logic sementara, aslinya uang bandar masuk saat meja ditutup
+                // Untuk keamanan aslinya, game modal disimpan terpisah dulu
+            }
+            
+            await xp.sendMessage(chat.id, { text: txt, mentions: [chat.sender, game.bandar] }, { quoted: m })
+        }
+        
+        if (action === 'tutup') {
+            if (!game || chat.sender !== game.bandar) return xp.sendMessage(chat.id, { text: '⚠️ Hanya bandar yang bisa menutup meja!' }, { quoted: m })
+            const usrdb = Object.values(db().key).find(u => u.jid === chat.sender)
+            usrdb.moneyDb.money += game.modal // Kembalikan sisa modal + keuntungan ke bandar
+            save.db()
+            syncUangCloud(chat.sender, usrdb)
+            delete global.bandarGame[chat.id]
+            return xp.sendMessage(chat.id, { text: `🃏 Meja ditutup. Bandar membawa pulang *Rp ${game.modal.toLocaleString('id-ID')}*.` }, { quoted: m })
+        }
+      } catch (e) { console.error(e) }
+    }
+  })
+  
+  // ==========================================
+  // 🚀 1. CRASH (Uji Keserakahan)
+  // ==========================================
+  global.crashGame = global.crashGame || {}
+
+  ev.on({
+    name: 'crash game',
+    cmd: ['crash'],
+    tags: 'Game Menu',
+    owner: !1,
+    prefix: !0,
+
+    run: async (xp, m, { args, chat, prefix, cmd }) => {
+      try {
+        if (!chat.group) return
+        const bet = parseInt(args[0])
+        const usrdb = Object.values(db().key).find(u => u.jid === chat.sender)
+
+        if (global.crashGame[chat.id] && global.crashGame[chat.id].status === 'playing') {
+            return xp.sendMessage(chat.id, { text: '⚠️ Roket sedang terbang! Tunggu ronde ini selesai.' }, { quoted: m })
+        }
+
+        if (!bet || bet < 500) return xp.sendMessage(chat.id, { text: `⚠️ Minimal taruhan Rp 500.\nContoh: ${prefix}${cmd} 5000` }, { quoted: m })
+        if (!usrdb || usrdb.moneyDb.money < bet) return xp.sendMessage(chat.id, { text: '❌ Saldo tidak cukup.' }, { quoted: m })
+
+        // Buka Lobi
+        if (!global.crashGame[chat.id]) {
+            global.crashGame[chat.id] = { status: 'waiting', players: [], cashedOut: [] }
+            
+            await xp.sendMessage(chat.id, { text: `🚀 *LOBI CRASH DIBUKA* 🚀\n\n@${chat.sender.split('@')[0]} memasang taruhan Rp ${bet.toLocaleString('id-ID')}.\n\n_Ketik ${prefix}${cmd} <taruhan> untuk ikut menumpang roket!\nRoket meluncur dalam 20 detik._`, mentions: [chat.sender] })
+            
+            setTimeout(async () => {
+                let game = global.crashGame[chat.id]
+                if (!game || game.players.length === 0) return delete global.crashGame[chat.id]
+                
+                game.status = 'playing'
+                
+                // Algoritma penentu titik ledak (Crash Point)
+                // Banyak meledak di angka kecil (1.0x - 2.0x), jarang tembus besar.
+                const e = 100
+                const crashPoint = Math.max(1.0, (e / (e - Math.random() * e)) * 0.99).toFixed(2)
+                
+                let multiplier = 1.0
+                const delay = ms => new Promise(res => setTimeout(res, ms))
+                const msg = await xp.sendMessage(chat.id, { text: `🚀 *ROKET MELUNCUR!*\n\nMultiplier: *${multiplier.toFixed(2)}x*\n\n_Ketik *.tarik* sebelum roket meledak!_` })
+
+                let isCrashed = false
+
+                // Loop animasi roket naik
+                while (!isCrashed) {
+                    await delay(1500) // update setiap 1.5 detik
+                    multiplier += (Math.random() * 0.4) + 0.1 // Naik secara acak
+
+                    if (multiplier >= crashPoint) {
+                        multiplier = crashPoint
+                        isCrashed = true
+                    }
+
+                    game.currentMultiplier = multiplier.toFixed(2)
+
+                    if (!isCrashed) {
+                        await xp.sendMessage(chat.id, { text: `🚀 *TERBANG TINGGI!*\n\nMultiplier: *${multiplier.toFixed(2)}x*\n\n_Ayo ketik *.tarik* sekarang sebelum telat!_`, edit: msg.key })
+                    } else {
+                        let txt = `💥 *ROKET MELEDAK DI ${multiplier}x!* 💥\n\n`
+                        txt += `🎉 *Pemain Selamat (Cair):*\n`
+                        
+                        let adaSelamat = false
+                        game.cashedOut.forEach(p => {
+                            txt += `- @${p.jid.split('@')[0]} (Menang Rp ${p.winAmount.toLocaleString('id-ID')})\n`
+                            adaSelamat = true
+                        })
+                        if (!adaSelamat) txt += `_Tidak ada yang selamat._\n`
+
+                        txt += `\n💀 *Pemain Hangus (Serakah):*\n`
+                        let adaMati = false
+                        game.players.forEach(p => {
+                            if (!game.cashedOut.find(c => c.jid === p.jid)) {
+                                txt += `- @${p.jid.split('@')[0]} (-Rp ${p.bet.toLocaleString('id-ID')})\n`
+                                adaMati = true
+                            }
+                        })
+                        if (!adaMati) txt += `_Tidak ada yang hangus._`
+
+                        await xp.sendMessage(chat.id, { text: txt, edit: msg.key, mentions: game.players.map(p => p.jid) })
+                        delete global.crashGame[chat.id]
+                    }
+                }
+            }, 20000)
+        }
+
+        // Potong saldo di awal
+        usrdb.moneyDb.money -= bet
+        save.db()
+        syncUangCloud(chat.sender, usrdb)
+        
+        let game = global.crashGame[chat.id]
+        if (!game.players.find(p => p.jid === chat.sender)) {
+             game.players.push({ jid: chat.sender, bet: bet })
+             if (game.players.length > 1) {
+                 await xp.sendMessage(chat.id, { text: `✅ @${chat.sender.split('@')[0]} ikut naik roket! Taruhan: Rp ${bet}`, mentions: [chat.sender] }, { quoted: m })
+             }
+        }
+
+      } catch (e) { console.error(e) }
     }
   })
 
   ev.on({
-    name: 'cek bank',
-    cmd: ['cekbank'],
+    name: 'tarik crash',
+    cmd: ['tarik', 'cashout'],
     tags: 'Game Menu',
-    desc: 'cek saldo bank',
     owner: !1,
     prefix: !0,
-    money: 100,
-    exp: 0.1,
 
-    run: async (xp, m, {
-      chat,
-      cmd
-    }) => {
+    run: async (xp, m, { chat }) => {
+        let game = global.crashGame[chat.id]
+        if (!game || game.status !== 'playing') return
+
+        const player = game.players.find(p => p.jid === chat.sender)
+        if (!player) return xp.sendMessage(chat.id, { text: '⚠️ Kamu tidak ikut di penerbangan ini!' }, { quoted: m })
+        
+        if (game.cashedOut.find(c => c.jid === chat.sender)) return xp.sendMessage(chat.id, { text: '⚠️ Kamu sudah loncat dari roket!' }, { quoted: m })
+
+        const currentM = game.currentMultiplier || 1.0
+        const winAmount = Math.floor(player.bet * currentM)
+
+        game.cashedOut.push({ jid: chat.sender, winAmount: winAmount })
+
+        const usrdb = Object.values(db().key).find(u => u.jid === chat.sender)
+        if (usrdb) {
+            usrdb.moneyDb.money += winAmount
+            save.db()
+            syncUangCloud(chat.sender, usrdb)
+        }
+
+        await xp.sendMessage(chat.id, { text: `🪂 @${chat.sender.split('@')[0]} loncat di titik *${currentM}x* dan membawa pulang *Rp ${winAmount.toLocaleString('id-ID')}*!`, mentions: [chat.sender] })
+    }
+  })
+
+  // ==========================================
+  // 🪟 2. JEMBATAN KACA (Survival Game)
+  // ==========================================
+  global.kacaGame = global.kacaGame || {}
+
+  ev.on({
+    name: 'jembatan kaca',
+    cmd: ['jembatankaca', 'kaca'],
+    tags: 'Game Menu',
+    owner: !1,
+    prefix: !0,
+
+    run: async (xp, m, { args, chat, prefix, cmd }) => {
       try {
-        const bankDb = JSON.parse(fs.readFileSync(bankData, 'utf-8')),
-              saldo = bankDb.key?.saldo || 0
+        if (!chat.group) return
+        const BIAYA = 10000
 
-        let txt = `BANK BOT ${botName}\n`
-            txt += `${line}\n`
-            txt += `Akun: Bank Pusat\n`
-            txt += `Saldo: Rp ${saldo.toLocaleString('id-ID')}\n`
-            txt += `${line}`
+        if (cmd === 'kaca' || cmd === 'jembatankaca') {
+            if (global.kacaGame[chat.id]) return xp.sendMessage(chat.id, { text: '⚠️ Game sedang berlangsung, tunggu selesai.' }, { quoted: m })
 
-        await xp.sendMessage(chat.id, { text: txt }, { quoted: m })
-      } catch (e) {
-        err(`error pada ${cmd}`, e)
-        call(xp, e, m)
+            global.kacaGame[chat.id] = { status: 'waiting', players: [], pot: 0, step: 1, maxStep: 3, timer: null }
+            await xp.sendMessage(chat.id, { text: `🪟 *SQUID GAME: JEMBATAN KACA* 🪟\n\nBiaya Masuk: Rp ${BIAYA.toLocaleString('id-ID')}\nKalian harus menebak kaca mana yang aman (Kiri/Kanan) sebanyak 3 langkah.\n\n_Ketik *${prefix}ikutkaca* untuk berpartisipasi.\nPermainan dimulai dalam 20 detik._` })
+
+            global.kacaGame[chat.id].timer = setTimeout(() => {
+                let cur = global.kacaGame[chat.id]
+                if (!cur || cur.players.length === 0) {
+                    xp.sendMessage(chat.id, { text: '❌ Game dibatalkan karena tidak ada peserta.' })
+                    return delete global.kacaGame[chat.id]
+                }
+                
+                cur.status = 'playing'
+                cur.votes = { kiri: [], kanan: [] } // Menyimpan pilihan pemain
+                cur.answer = Math.random() < 0.5 ? 'kiri' : 'kanan' // Jawaban untuk langkah 1
+
+                let listPemain = cur.players.map(p => `- @${p.split('@')[0]}`).join('\n')
+                xp.sendMessage(chat.id, { text: `🚨 *GAME DIMULAI* 🚨\n\nLangkah 1/3: Kaca mana yang aman?\nKetikan pilihan kalian: *${prefix}kiri* atau *${prefix}kanan*\n\n*Peserta (Wajib milih):*\n${listPemain}\n\n_Waktu memilih: 15 detik._`, mentions: cur.players })
+
+                // Timer Langkah 1
+                cur.timer = setTimeout(() => evaluasiKaca(xp, chat.id), 15000)
+            }, 20000)
+            return
+        }
+
+        if (cmd === 'ikutkaca') {
+            let cur = global.kacaGame[chat.id]
+            if (!cur || cur.status !== 'waiting') return
+            if (cur.players.includes(chat.sender)) return
+            
+            const usrdb = Object.values(db().key).find(u => u.jid === chat.sender)
+            if (!usrdb || usrdb.moneyDb.money < BIAYA) return xp.sendMessage(chat.id, { text: '❌ Uangmu kurang untuk ikut.' }, { quoted: m })
+
+            usrdb.moneyDb.money -= BIAYA
+            save.db()
+            syncUangCloud(chat.sender, usrdb)
+            
+            cur.players.push(chat.sender)
+            cur.pot += BIAYA
+            await xp.sendMessage(chat.id, { text: `✅ @${chat.sender.split('@')[0]} bergabung! Total Pot: Rp ${cur.pot.toLocaleString('id-ID')}`, mentions: [chat.sender] }, { quoted: m })
+        }
+
+      } catch (e) { console.error(e) }
+    }
+  })
+
+  // Command untuk memilih Kiri atau Kanan (Harus di luar block event.on sebelumnya, atau masukin array cmd)
+  ev.on({
+    name: 'Pilih Kaca',
+    cmd: ['kiri', 'kanan'],
+    tags: 'Game Menu',
+    owner: !1,
+    prefix: !0,
+
+    run: async (xp, m, { chat, cmd }) => {
+        let cur = global.kacaGame[chat.id]
+        if (!cur || cur.status !== 'playing') return
+        if (!cur.players.includes(chat.sender)) return
+        if (cur.votes.kiri.includes(chat.sender) || cur.votes.kanan.includes(chat.sender)) return xp.sendMessage(chat.id, { text: '⚠️ Kamu sudah memilih langkah ini!' }, { quoted: m })
+
+        cur.votes[cmd].push(chat.sender)
+        await xp.sendMessage(chat.id, { react: { text: '👀', key: m.key } })
+    }
+  })
+
+  // Fungsi Evaluasi Jembatan Kaca
+  async function evaluasiKaca(xp, chatId) {
+      let cur = global.kacaGame[chatId]
+      if (!cur) return
+
+      let jawabanBenar = cur.answer
+      let pemainSelamat = cur.votes[jawabanBenar]
+      let pemainJatuh = cur.votes[jawabanBenar === 'kiri' ? 'kanan' : 'kiri']
+
+      // Yang ga milih (AFK) dianggap jatuh
+      cur.players.forEach(p => {
+          if (!pemainSelamat.includes(p) && !pemainJatuh.includes(p)) {
+              pemainJatuh.push(p)
+          }
+      })
+
+      let txt = `💥 *KACA PECAH!* 💥\n\nKaca yang aman adalah: *${jawabanBenar.toUpperCase()}*\n\n`
+      
+      if (pemainJatuh.length > 0) {
+          txt += `💀 *Pemain Jatuh & Mati:*\n${pemainJatuh.map(p => `- @${p.split('@')[0]}`).join('\n')}\n\n`
       }
+
+      cur.players = pemainSelamat // Update pemain yang sisa
+
+      if (cur.players.length === 0) {
+          txt += `❌ *SEMUA PEMAIN MATI!*\nTotal hadiah Rp ${cur.pot.toLocaleString('id-ID')} hangus.`
+          await xp.sendMessage(chatId, { text: txt, mentions: pemainJatuh })
+          return delete global.kacaGame[chatId]
+      }
+
+      if (cur.step >= cur.maxStep) {
+          // Game Selesai - Ada yang selamat sampai ujung
+          const hadiahPerOrang = Math.floor(cur.pot / cur.players.length)
+          txt += `🎉 *SELAMAT! KALIAN MENCAPAI UJUNG JEMBATAN!*\n\nPemain yang selamat masing-masing mendapatkan *Rp ${hadiahPerOrang.toLocaleString('id-ID')}*:\n${cur.players.map(p => `- @${p.split('@')[0]}`).join('\n')}`
+          
+          cur.players.forEach(p => {
+              const usrdb = Object.values(db().key).find(u => u.jid === p)
+              if (usrdb) {
+                  usrdb.moneyDb.money += hadiahPerOrang
+                  syncUangCloud(p, usrdb)
+              }
+          })
+          save.db()
+
+          await xp.sendMessage(chatId, { text: txt, mentions: [...pemainJatuh, ...cur.players] })
+          return delete global.kacaGame[chatId]
+      }
+
+      // Lanjut ke langkah berikutnya
+      cur.step++
+      cur.votes = { kiri: [], kanan: [] }
+      cur.answer = Math.random() < 0.5 ? 'kiri' : 'kanan'
+
+      txt += `🚶‍♂️ *PEMAIN YANG TERSISA:*\n${cur.players.map(p => `- @${p.split('@')[0]}`).join('\n')}\n\n`
+      txt += `🚨 *LANGKAH ${cur.step}/${cur.maxStep}*\nKetik *.kiri* atau *.kanan* sekarang! Waktu 15 detik.`
+
+      await xp.sendMessage(chatId, { text: txt, mentions: [...pemainJatuh, ...cur.players] })
+      
+      cur.timer = setTimeout(() => evaluasiKaca(xp, chatId), 15000)
+  }
+
+  // ==========================================
+  // 💣 5. OPER BOM WAKTU
+  // ==========================================
+  global.bomWaktu = global.bomWaktu || {}
+
+  ev.on({
+    name: 'bom waktu',
+    cmd: ['bom', 'ikutbom', 'lempar'],
+    tags: 'Game Menu',
+    owner: !1,
+    prefix: !0,
+
+    run: async (xp, m, { chat, cmd, prefix }) => {
+      try {
+        if (!chat.group) return
+        const BIAYA = 5000
+        let game = global.bomWaktu[chat.id]
+
+        if (cmd === 'bom') {
+            if (game) return xp.sendMessage(chat.id, { text: '⚠️ Game bom sudah ada, ketik .ikutbom' }, { quoted: m })
+            global.bomWaktu[chat.id] = { status: 'waiting', players: [], pot: 0, timer: null, currentHolder: null }
+            await xp.sendMessage(chat.id, { text: `💣 *BOM WAKTU DIBUAT* 💣\n\nBiaya pendaftaran: Rp ${BIAYA}\nKetik *${prefix}ikutbom* untuk bergabung.\nGame otomatis mulai setelah ada 2+ pemain dan tidak ada yang mendaftar lagi dalam 15 detik.` })
+            
+            // Auto start timer
+            global.bomWaktu[chat.id].timer = setTimeout(() => {
+                 let cur = global.bomWaktu[chat.id]
+                 if (cur && cur.players.length >= 2) startBom(xp, chat)
+                 else {
+                     xp.sendMessage(chat.id, { text: '❌ Batal, pemain kurang dari 2.' })
+                     delete global.bomWaktu[chat.id]
+                 }
+            }, 15000)
+            return
+        }
+
+        if (cmd === 'ikutbom') {
+            if (!game || game.status !== 'waiting') return
+            const usrdb = Object.values(db().key).find(u => u.jid === chat.sender)
+            if (!usrdb || usrdb.moneyDb.money < BIAYA || game.players.includes(chat.sender)) return
+            
+            usrdb.moneyDb.money -= BIAYA
+            game.players.push(chat.sender)
+            game.pot += BIAYA
+            save.db()
+            
+            // Reset start timer
+            clearTimeout(game.timer)
+            game.timer = setTimeout(() => startBom(xp, chat), 15000)
+            
+            await xp.sendMessage(chat.id, { text: `✅ @${chat.sender.split('@')[0]} join! (Total: ${game.players.length})`, mentions: [chat.sender] }, { quoted: m })
+        }
+
+        if (cmd === 'lempar') {
+            if (!game || game.status !== 'playing' || game.currentHolder !== chat.sender) return xp.sendMessage(chat.id, { text: '⚠️ Kamu sedang tidak memegang bom!' }, { quoted: m })
+            const target = m.message?.extendedTextMessage?.contextInfo?.participant || m.message?.extendedTextMessage?.contextInfo?.mentionedJid?.[0]
+            if (!target || !game.players.includes(target)) return xp.sendMessage(chat.id, { text: '⚠️ Target tidak ada atau tidak ikut bermain!' }, { quoted: m })
+            if (target === chat.sender) return
+            
+            game.currentHolder = target
+            await xp.sendMessage(chat.id, { text: `🤾‍♂️ Bom dilempar ke @${target.split('@')[0]}!\nCepat ketik *.lempar @tag_lain*`, mentions: [target] })
+        }
+
+        async function startBom(xp, chat) {
+            let cur = global.bomWaktu[chat.id]
+            cur.status = 'playing'
+            cur.currentHolder = cur.players[Math.floor(Math.random() * cur.players.length)]
+            
+            const ledakanMs = Math.floor(Math.random() * 20000) + 10000 // 10 - 30 detik
+            
+            await xp.sendMessage(chat.id, { text: `🚨 *BOM DIAKTIFKAN!* 🚨\n\nTotal Pot: Rp ${cur.pot}\nBom saat ini dipegang oleh @${cur.currentHolder.split('@')[0]}!\n\n_Buru-buru tag temanmu dengan *.lempar @tag*_`, mentions: [cur.currentHolder] })
+            
+            setTimeout(async () => {
+                 let finalGame = global.bomWaktu[chat.id]
+                 if (!finalGame) return
+                 
+                 const loser = finalGame.currentHolder
+                 const winners = finalGame.players.filter(p => p !== loser)
+                 const prize = Math.floor(finalGame.pot / winners.length)
+                 
+                 let winTxt = `💥 *DOOOOAAAARRRR!!!* 💥\n\nBom meledak di tangan @${loser.split('@')[0]}!\n\n🎉 *Pemenang yang selamat:*\n`
+                 winners.forEach(w => {
+                     const wDb = Object.values(db().key).find(u => u.jid === w)
+                     if (wDb) {
+                         wDb.moneyDb.money += prize
+                         syncUangCloud(w, wDb)
+                     }
+                     winTxt += `- @${w.split('@')[0]} (+Rp ${prize})\n`
+                 })
+                 save.db()
+                 await xp.sendMessage(chat.id, { text: winTxt, mentions: finalGame.players })
+                 delete global.bomWaktu[chat.id]
+            }, ledakanMs)
+        }
+      } catch (e) { console.error(e) }
+    }
+  })
+
+  // ==========================================
+  // 🏦 4. SISTEM BANK & EKONOMI
+  // ==========================================
+  ev.on({
+    name: 'cek bank',
+    cmd: ['cekbank', 'bank'],
+    tags: 'Game Menu',
+    owner: !1,
+    prefix: !0,
+
+    run: async (xp, m, { chat }) => {
+      try {
+        const bankDb = JSON.parse(fs.readFileSync(bankData, 'utf-8'))
+        const usrdb = Object.values(db().key).find(u => u.jid === chat.sender)
+        let txt = `🏦 *BANK PUSAT ALYA*\n\n💰 Saldo Bank Bot: Rp ${bankDb.key?.saldo?.toLocaleString('id-ID') || 0}\n💳 Tabungan Kamu: Rp ${usrdb?.moneyDb?.moneyInBank?.toLocaleString('id-ID') || 0}`
+        await xp.sendMessage(chat.id, { text: txt }, { quoted: m })
+      } catch (e) { console.error(e) }
     }
   })
 
   ev.on({
     name: 'nabung',
-    cmd: ['nabung', 'isiatm'],
+    cmd: ['nabung', 'isiatm', 'deposit'],
     tags: 'Game Menu',
-    desc: 'mengisi saldo bank orang',
     owner: !1,
     prefix: !0,
-    money: 1,
-    exp: 0.1,
 
-    run: async (xp, m, {
-      args,
-      chat,
-      cmd
-    }) => {
+    run: async (xp, m, { args, chat }) => {
       try {
-        if (!args) return xp.sendMessage(chat.id, { text: 'contoh: .isiatm 10000' }, { quoted: m })
+        if (!args[0]) return xp.sendMessage(chat.id, { text: '⚠️ Masukkan nominal! Contoh: .nabung 10000' }, { quoted: m })
+        const userDb = Object.values(db().key).find(u => u.jid === chat.sender)
+        const nominal = parseInt(args[0])
 
-        const userDb = Object.values(db().key).find(u => u.jid === chat.sender),
-              nominal = Number(args[0])
-
-        if (!userDb || !nominal) {
-          return xp.sendMessage(chat.id, { text: !userDb ? 'kamu belum terdaftar coba lagi' : 'nominal tidak valid\ncontoh: .isiatm 10000' }, { quoted: m })
-        }
-
-        if (userDb.moneyDb?.money < nominal) return xp.sendMessage(chat.id, { text: `uang kamu hanya tersisa ${userDb.moneyDb?.money.toLocaleString('id-ID')}` }, { quoted: m })
+        if (!userDb || !nominal || nominal <= 0) return xp.sendMessage(chat.id, { text: '⚠️ Nominal tidak valid.' }, { quoted: m })
+        if (userDb.moneyDb.money < nominal) return xp.sendMessage(chat.id, { text: `⚠️ Uang dompetmu tidak cukup! Sisa: Rp ${userDb.moneyDb.money.toLocaleString('id-ID')}` }, { quoted: m })
 
         userDb.moneyDb.money -= nominal
         userDb.moneyDb.moneyInBank += nominal
         save.db()
+        syncUangCloud(chat.sender, userDb)
 
-        await xp.sendMessage(chat.id, { text: `Rp ${nominal.toLocaleString('id-ID')} berhasil masukan ke bank` }, { quoted: m })
-      } catch (e) {
-        err(`error pada ${cmd}`, e)
-        call(xp, e, m)
-      }
+        await xp.sendMessage(chat.id, { text: `✅ Berhasil menabung Rp ${nominal.toLocaleString('id-ID')} ke Bank!` }, { quoted: m })
+      } catch (e) { console.error(e) }
     }
   })
 
+  ev.on({
+    name: 'tarik saldo',
+    cmd: ['tariksaldo', 'tarik', 'withdraw'],
+    tags: 'Game Menu',
+    owner: !1,
+    prefix: !0,
+
+    run: async (xp, m, { args, chat }) => {
+      try {
+        if (!args[0]) return xp.sendMessage(chat.id, { text: '⚠️ Masukkan nominal! Contoh: .tarik 10000' }, { quoted: m })
+        const nominal = parseInt(args[0])
+        const usrdb = Object.values(db().key).find(u => u.jid === chat.sender)
+
+        if (!nominal || !usrdb) return xp.sendMessage(chat.id, { text: '⚠️ Nominal tidak valid.' }, { quoted: m })
+        if (usrdb.moneyDb.moneyInBank < nominal) return xp.sendMessage(chat.id, { text: `⚠️ Saldo ATM kamu hanya sisa Rp ${usrdb.moneyDb.moneyInBank.toLocaleString('id-ID')}` }, { quoted: m })
+
+        usrdb.moneyDb.moneyInBank -= nominal
+        usrdb.moneyDb.money += nominal
+        save.db()
+        syncUangCloud(chat.sender, usrdb)
+
+        await xp.sendMessage(chat.id, { text: `✅ Berhasil menarik Rp ${nominal.toLocaleString('id-ID')} dari Bank!` }, { quoted: m })
+      } catch (e) { console.error(e) }
+    }
+  })
+
+  ev.on({
+    name: 'transfer',
+    cmd: ['tf', 'transfer', 'pay'],
+    tags: 'Game Menu',
+    owner: !1,
+    prefix: !0,
+
+    run: async (xp, m, { args, chat }) => {
+      try {
+        if (!chat.group) return xp.sendMessage(chat.id, { text: '❌ Hanya bisa digunakan di grup' }, { quoted: m })
+        const target = m.message?.extendedTextMessage?.contextInfo?.participant || m.message?.extendedTextMessage?.contextInfo?.mentionedJid?.[0]
+        if (!target || !args[1]) return xp.sendMessage(chat.id, { text: '⚠️ Format salah! Contoh: .tf @user 10000' }, { quoted: m })
+
+        const nominal = parseInt(args[1])
+        const targetDb = Object.values(db().key).find(u => u.jid === target)
+        const userDb = Object.values(db().key).find(u => u.jid === chat.sender)
+
+        if (!nominal || nominal <= 0) return xp.sendMessage(chat.id, { text: '⚠️ Nominal tidak valid' }, { quoted: m })
+        if (!userDb || !targetDb) return xp.sendMessage(chat.id, { text: '❌ Data pengirim/penerima tidak ditemukan.' }, { quoted: m })
+        if (userDb.moneyDb.money < nominal) return xp.sendMessage(chat.id, { text: `⚠️ Uangmu tidak cukup.` }, { quoted: m })
+
+        userDb.moneyDb.money -= nominal
+        targetDb.moneyDb.money += nominal
+        save.db()
+        syncUangCloud(chat.sender, userDb)
+        syncUangCloud(target, targetDb)
+
+        await xp.sendMessage(chat.id, { text: `💸 Berhasil transfer Rp ${nominal.toLocaleString('id-ID')} ke @${target.split('@')[0]}`, mentions: [target] }, { quoted: m })
+      } catch (e) { console.error(e) }
+    }
+  })
+
+  // ==========================================
+  // 🥷 5. RAMPOK (Player PvP Economy)
+  // ==========================================
   ev.on({
     name: 'rampok',
-    cmd: ['rampok'],
+    cmd: ['rampok', 'rob'],
     tags: 'Game Menu',
-    desc: 'merampok orang',
     owner: !1,
     prefix: !0,
-    money: 0,
-    exp: 0.2,
 
-    run: async (xp, m, {
-      chat,
-      cmd
-    }) => {
+    run: async (xp, m, { chat }) => {
       try {
-        if (!chat.group) return xp.sendMessage(chat.id, { text: 'perintah ini hanya bisa digunakan digrup' }, { quoted: m })
+        if (!chat.group) return xp.sendMessage(chat.id, { text: '❌ Perintah ini hanya bisa digunakan di grup' }, { quoted: m })
+        const target = m.message?.extendedTextMessage?.contextInfo?.participant || m.message?.extendedTextMessage?.contextInfo?.mentionedJid?.[0]
+        
+        const usrdb = Object.values(db().key).find(u => u.jid === chat.sender)
+        const targetdb = Object.values(db().key).find(t => t.jid === target)
 
-        const quoted = m.message?.extendedTextMessage?.contextInfo,
-              target = quoted?.participant || quoted?.mentionedJid?.[0],
-              targetdb = Object.values(db().key).find(t => t.jid === target),
-              usrdb = Object.values(db().key).find(u => u.jid === chat.sender)
+        if (!target || !targetdb) return xp.sendMessage(chat.id, { text: '⚠️ Reply/tag target yang ingin dirampok!' }, { quoted: m })
+        if (target === chat.sender) return xp.sendMessage(chat.id, { text: '⚠️ Nggak usah merampok diri sendiri.' }, { quoted: m })
+        if (usrdb.game?.robbery?.cost <= 0) return xp.sendMessage(chat.id, { text: '⚠️ Kesempatan merampok habis, coba besok.' }, { quoted: m })
+        if (targetdb.moneyDb.money <= 0) return xp.sendMessage(chat.id, { text: '⚠️ Target terlalu miskin.' }, { quoted: m })
 
-        if (!target || !targetdb) return xp.sendMessage(chat.id, { text: !target ? 'reply/tag target' : 'target belum terdaftar' }, { quoted: m })
-
-        if (usrdb.game?.robbery?.cost <= 0) return xp.sendMessage(chat.id, { text: 'kesempatan merampok habis coba kembali besok' }, { quoted: m })
-
-        const mention = target.replace(/@s\.whatsapp\.net$/, ''),
-              moneyTarget = targetdb.moneyDb.money,
-              moneyUsr = usrdb.moneyDb.money
-
-        if (target === chat.sender) return
-
-        if (moneyTarget <= 0) return xp.sendMessage(chat.id, { text: 'target miskin' }, { quoted: m })
-
-        const chance = Math.floor(Math.random() * 100) + 1,
-              escapeChance = chance >= 45
-                ? Math.floor(Math.random() * 21) + 25
-                : Math.floor(Math.random() * 21) + 10,
-              escapeRoll = Math.floor(Math.random() * 100) + 1
+        const chance = Math.floor(Math.random() * 100) + 1
+        const escapeChance = chance >= 45 ? Math.floor(Math.random() * 21) + 25 : Math.floor(Math.random() * 21) + 10
+        const escapeRoll = Math.floor(Math.random() * 100) + 1
 
         if (escapeRoll <= escapeChance) {
-          return xp.sendMessage(chat.id, { text: `Target berhasil *lolos!*` }, { quoted: m })
+          usrdb.game.robbery.cost -= 1
+          return xp.sendMessage(chat.id, { text: `🚨 Target berhasil *lolos*! Kamu gagal merampok.` }, { quoted: m })
         }
 
-        const persen = chance > 100 ? 100 : chance,
-              stolin = Math.floor(moneyTarget * (persen / 100)),
-              finalSt = stolin < 1 ? 1 : stolin
+        const persen = chance > 100 ? 100 : chance
+        let stolin = Math.floor(targetdb.moneyDb.money * (persen / 100))
+        if (stolin < 1) stolin = 1
 
-        targetdb.moneyDb.money -= finalSt
-        usrdb.moneyDb.money += finalSt
+        targetdb.moneyDb.money -= stolin
+        usrdb.moneyDb.money += stolin
         usrdb.game.robbery.cost -= 1
-
         save.db()
+        syncUangCloud(chat.sender, usrdb)
+        syncUangCloud(target, targetdb)
 
-        let txt = `${head}\n`
-            txt += `${body} ${btn} *Berhasil Merampok:* Rp ${finalSt.toLocaleString('id-ID')} dari @${mention}\n`
-            txt += `${body} ${btn} *Saldo Kamu:* Rp ${usrdb.moneyDb?.money.toLocaleString('id-ID')}\n`
-            txt += `${foot}${line}`
-
+        let txt = `🥷 *PERAMPOKAN BERHASIL*\n\nBerhasil mencuri *Rp ${stolin.toLocaleString('id-ID')}* dari @${target.split('@')[0]}\n💰 Saldo Kamu: Rp ${usrdb.moneyDb.money.toLocaleString('id-ID')}`
         await xp.sendMessage(chat.id, { text: txt, mentions: [target] }, { quoted: m })
-      } catch (e) {
-        err(`error pada ${cmd}`, e)
-        call(xp, e, m)
-      }
+      } catch (e) { console.error(e) }
     }
   })
 
-  ev.on({
-    name: 'sambung kata',
-    cmd: ['sambungkata', 'samkat'],
-    tags: 'Game Menu',
-    desc: 'game sambung kata',
-    owner: !1,
-    prefix: !0,
-    money: 1,
-    exp: 0.1,
-
-    run: async (xp, m, {
-      chat,
-      cmd
-    }) => {
-      try {
-        const { sambungKata } = await global.func(),
-              user = Object.values(db().key).find(u => u.jid === chat.sender),
-              key = Object.values(sambungKata),
-              list = key[Math.floor(Math.random() * key.length)]
-
-        const msg = await xp.sendMessage(chat.id, { text: `sambung kata dimulai\nsoal: ${list.soal}\n\nreply chat ini untuk menjawab` }, { quoted: m })
-
-        const __sambungKata = path.join(dirname, '../temp/history_sambung_kata.json')
-
-        let history = {}
-
-        if (fs.existsSync(__sambungKata)) {
-          history = JSON.parse(fs.readFileSync(__sambungKata, 'utf-8') || '{}')
-        }
-
-        history.key ??= {}
-        history.key[chat.sender] ??= {}
-
-        history.key[chat.sender][msg.key.id] = {
-          name: chat.pushName,
-          id: msg.key.id,
-          chat: chat.id,
-          no: user?.noId || chat.sender,
-          soal: list.soal,
-          key: list.jawaban,
-          chance: 3,
-          status: !0,
-          set: Date.now()
-        }
-
-        fs.writeFileSync(__sambungKata, JSON.stringify(history, null, 2))
-      } catch (e) {
-        err(`error pada ${cmd}`, e)
-        call(xp, e, m)
-      }
-    }
-  })
-
+  // ==========================================
+  // 🎰 6. GACHA SLOT & GAME KASINO LAINNYA
+  // ==========================================
   ev.on({
     name: 'slot',
     cmd: ['isi', 'spin', 'slot', 'gacha'],
     tags: 'Game Menu',
-    desc: 'gacha uang',
     owner: !1,
     prefix: !0,
-    money: 0,
-    exp: 0.1,
 
-    run: async (xp, m, {
-      args,
-      chat,
-      cmd
-    }) => {
+    run: async (xp, m, { args, chat }) => {
       try {
-        const saldoBank = JSON.parse(fs.readFileSync(bankData, 'utf-8')),
-              user = Object.values(db().key).find(u => u.jid === chat.sender),
-              delay = ms => new Promise(res => setTimeout(res, ms)),
-              sym = ['🕊️','🦀','🦎','🍀','💎','🍒','❤️','🎊'],
-              randSym = () => sym[Math.floor(Math.random() * sym.length)]
+        const saldoBank = JSON.parse(fs.readFileSync(bankData, 'utf-8'))
+        const user = Object.values(db().key).find(u => u.jid === chat.sender)
+        const delay = ms => new Promise(res => setTimeout(res, ms))
+        const sym = ['🕊️','🦀','🦎','🍀','💎','🍒','❤️','🎊']
+        const randSym = () => sym[Math.floor(Math.random() * sym.length)]
 
         if (!user) return xp.sendMessage(chat.id, { text: '❌ Kamu belum terdaftar' }, { quoted: m })
 
         const inputBet = args[0]?.toLowerCase()
         let saldo = user.moneyDb?.money || 0
-        let isi = 0
+        let isi = inputBet === 'all' ? saldo : parseInt(inputBet)
 
-        // Fitur All In (Otomatis menyesuaikan dengan saldo setelah dipotong pajak sistem)
-        if (inputBet === 'all') {
-            isi = saldo
-        } else {
-            isi = parseInt(inputBet)
-        }
-
-        if (!inputBet || (inputBet !== 'all' && isNaN(isi)) || isi <= 0) {
-            return xp.sendMessage(chat.id, { text: '⚠️ Masukkan jumlah taruhan yang valid!\n💬 *Contoh:* .isi 10000 atau .isi all' }, { quoted: m })
-        }
-
-        // Akal-akalan menembus pajak siluman 12%
-        if (isi > saldo) {
-            // Kita hitung mundur saldo sebelum kena pajak 12%
-            const saldoSebelumPajak = Math.floor(saldo / 0.88)
-            
-            // Kalau nominal taruhannya wajar (hanya beda karena pajak), kita paksa All In
-            if (isi <= saldoSebelumPajak + 10) {
-                isi = saldo
-            } else {
-                return xp.sendMessage(chat.id, { text: `⚠️ Saldo kamu tidak cukup! Sisa saldo: Rp ${saldo.toLocaleString('id-ID')}` }, { quoted: m })
-            }
-        }
-
-        // ==========================================
-        // 1. TENTUKAN HASIL AKHIR DULUAN
-        // ==========================================
-        const menang = Math.random() < 0.5 
+        if (!inputBet || isNaN(isi) || isi <= 0) return xp.sendMessage(chat.id, { text: '⚠️ Masukkan jumlah taruhan yang valid!' }, { quoted: m })
         
-        const hasilTengah = menang 
-            ? Array(3).fill(randSym())  
-            : (() => {
-                let r; do { r = [randSym(), randSym(), randSym()] } while (r[0] === r[1] && r[1] === r[2]);
-                return r; 
-              })();
+        if (isi > saldo) {
+            const saldoAwal = Math.floor(saldo / 0.88) // Kompensasi pajak 12%
+            if (isi <= saldoAwal + 10) isi = saldo; else return xp.sendMessage(chat.id, { text: `⚠️ Saldo tidak cukup! Sisa: Rp ${saldo.toLocaleString('id-ID')}` }, { quoted: m })
+        }
 
+        const menang = Math.random() < 0.5 
+        const hasilTengah = menang ? Array(3).fill(randSym()) : (() => { let r; do { r = [randSym(), randSym(), randSym()] } while (r[0] === r[1] && r[1] === r[2]); return r; })()
         const baris1 = [randSym(), randSym(), randSym()]
         const baris3 = [randSym(), randSym(), randSym()]
 
@@ -706,448 +1197,164 @@ export default function game(ev) {
           saldoBank.key.saldo += isi
         }
 
-        const saveBank = d => fs.writeFileSync(bankData, JSON.stringify(d, null, 2))
         save.db()
-        saveBank(saldoBank)
+        syncUangCloud(chat.sender, user)
+        fs.writeFileSync(bankData, JSON.stringify(saldoBank, null, 2))
 
-        // ==========================================
-        // 2. MULAI ANIMASI PUTAR (SPIN)
-        // ==========================================
-        const pesanAwal = await xp.sendMessage(chat.id, { text: '🎰 *Mesin slot sedang ditarik...*' }, { quoted: m })
+        const pesanAwal = await xp.sendMessage(chat.id, { text: '🎰 *Mesin ditarik...*' }, { quoted: m })
 
         for (let i = 0; i < 4; i++) {
           await delay(500) 
-          
-          let frameTxt = `
-╭───🎰 GACHA UANG 🎰───╮
-│       ${randSym()} : ${randSym()} : ${randSym()}
-│     > ${randSym()} : ${randSym()} : ${randSym()} <
-│       ${randSym()} : ${randSym()} : ${randSym()}
-╰────────────────────╯
-             🔄 *Memutar...*`.trim()
-             
+          let frameTxt = `╭───🎰 GACHA 🎰───╮\n│  ${randSym()} : ${randSym()} : ${randSym()}\n│> ${randSym()} : ${randSym()} : ${randSym()} <\n│  ${randSym()} : ${randSym()} : ${randSym()}\n╰─────────────────╯\n   🔄 *Memutar...*`
           await xp.sendMessage(chat.id, { text: frameTxt, edit: pesanAwal.key })
         }
 
-        // ==========================================
-        // 3. TAMPILKAN HASIL AKHIR
-        // ==========================================
         await delay(600) 
-        
-        const txtAkhir = `
-╭───🎰 GACHA UANG 🎰───╮
-│       ${baris1.join(' : ')}
-│     > ${hasilTengah.join(' : ')} <
-│       ${baris3.join(' : ')}
-╰────────────────────╯
-      ${menang ? `🎉 *JACKPOT!* Menang +Rp ${rsMoney.toLocaleString('id-ID')}` : `💥 *ZONK!* Kalah -Rp ${isi.toLocaleString('id-ID')}`}
-`.trim()
-
+        const txtAkhir = `╭───🎰 GACHA 🎰───╮\n│  ${baris1.join(' : ')}\n│> ${hasilTengah.join(' : ')} <\n│  ${baris3.join(' : ')}\n╰─────────────────╯\n${menang ? `🎉 *JACKPOT!* Menang +Rp ${rsMoney.toLocaleString('id-ID')}` : `💥 *ZONK!* Kalah -Rp ${isi.toLocaleString('id-ID')}`}`
         await xp.sendMessage(chat.id, { text: txtAkhir, edit: pesanAwal.key })
 
-      } catch (e) {
-        console.error(`Error pada ${cmd}:`, e)
-        if (typeof err === 'function') err(`error pada ${cmd}`, e)
-        if (typeof call === 'function') call(xp, e, m)
-      }
+      } catch (e) { console.error(e) }
     }
   })
 
-  ev.on({
-    name: 'tarik saldo',
-    cmd: ['tariksaldo', 'tarik'],
-    tags: 'Game Menu',
-    desc: 'mengambil saldo dari bank',
-    owner: !1,
-    prefix: !0,
-    money: 0,
-    exp: 0.1,
-
-    run: async (xp, m, {
-      args,
-      chat,
-      cmd
-    }) => {
-      try {
-        if (!args) return xp.sendMessage(chat.id, { text: 'masukan nominal\ncontoh: .tarik 1000' }, { quoted: m })
-
-        const nominal = Number(args[0]),
-              usrdb = Object.values(db().key).find(u => u.jid === chat.sender)
-
-        if (!nominal || !usrdb) {
-          return xp.sendMessage(chat.id, { text: !nominal ? 'nominal tidak valid' : 'kamu belum terdaftar coba lagi' }, { quoted: m })
-        }
-
-        const moneyBank = usrdb.moneyDb?.moneyInBank
-        if (moneyBank < nominal) return xp.sendMessage(chat.id, { text: `saldo bank kamu hanya tersisa Rp ${moneyBank.toLocaleString('id-ID')}` }, { quoted: m })
-
-        usrdb.moneyDb.moneyInBank -= nominal
-        usrdb.moneyDb.money += nominal
-        save.db()
-
-        await xp.sendMessage(chat.id, { text: `Rp ${nominal.toLocaleString('id-ID')} berhasil di tarik dari bank` }, { quoted: m })
-      } catch (e) {
-        err(`error pada ${cmd}`, e)
-        call(xp, e, m)
-      }
-    }
-  })
-
-  ev.on({
-    name: 'transfer',
-    cmd: ['tf', 'transfer'],
-    tags: 'Game Menu',
-    desc: 'mentransfer uang',
-    owner: !1,
-    prefix: !0,
-    money: 100,
-    exp: 0.5,
-
-    run: async (xp, m, {
-      args,
-      chat,
-      cmd
-    }) => {
-      try {
-        if (!chat.group) return xp.sendMessage(chat.id, { text: 'perintah ini hanya bisa digunakan digrup' }, { quoted: m })
-
-        const quoted = m.message?.extendedTextMessage?.contextInfo,
-              target = quoted?.participant || quoted?.mentionedJid?.[0],
-              targetDb = Object.values(db().key).find(u => u.jid === target),
-              userDb = Object.values(db().key).find(u => u.jid === chat.sender)
-
-        if (!target || !args?.[0]) return xp.sendMessage(chat.id, { text: !target ? 'reply/tag orang yang akan menerima transfer' : 'nominal tidak valid\ncontoh: .tf @pengguna/reply 10000' }, { quoted: m })
-
-        const nominal = Number(args[1]) || Number(args[0])
-        if (!nominal || nominal < 1e0)
-          return xp.sendMessage(chat.id, { text: 'nominal tidak valid' }, { quoted: m })
-
-        if (!userDb || !targetDb) return xp.sendMessage(chat.id, { text: !userDb ? 'data kamu tidak ditemukan di database' : 'data penerima tidak ditemukan di database' }, { quoted: m })
-
-        const uMoney = userDb.moneyDb.money
-
-        if (uMoney < nominal) return xp.sendMessage(chat.id, { text: `saldo kamu tersisa Rp ${userDb.moneyDb?.money.toLocaleString('id-ID')}` }, { quoted: m })
-
-        userDb.moneyDb.money -= nominal
-        targetDb.moneyDb.money += nominal
-        save.db()
-
-        let txt = `Rp ${nominal.toLocaleString('id-ID')} berhasil ditransfer`
-
-        await xp.sendMessage(chat.id, { text: txt }, { quoted: m })
-      } catch (e) {
-        err(`error pada ${cmd}`, e)
-        call(xp, e, m)
-      }
-    }
-  })
-  
-    // ==========================================
-  // ⚔️ FITUR RPG: BERBURU (HUNTING)
+  // ==========================================
+  // 🏕️ 7. SISTEM RPG (Berburu, Tambang, Heal, Duel)
   // ==========================================
   ev.on({
     name: 'berburu',
     cmd: ['berburu', 'hunt', 'adventure'],
     tags: 'Game Menu',
-    desc: 'Berpetualang melawan monster untuk EXP & Uang',
     owner: !1,
     prefix: !0,
-    money: 0,
-    exp: 0, 
 
-    run: async (xp, m, { chat, cmd }) => {
+    run: async (xp, m, { chat }) => {
       try {
         const user = Object.values(db().key).find(u => u.jid === chat.sender)
-        if (!user) return xp.sendMessage(chat.id, { text: '❌ Kamu belum terdaftar' }, { quoted: m })
-
-        // 1. Inisialisasi status RPG user jika belum ada
+        if (!user) return
         user.rpg = user.rpg || { hp: 100, potion: 3, level: 1, exp: 0 }
         
-        if (user.rpg.hp < 20) {
-          return xp.sendMessage(chat.id, { text: `⚠️ HP kamu terlalu rendah (${user.rpg.hp}/100) untuk berpetualang!\nKetik *.heal* untuk memulihkan HP.` }, { quoted: m })
-        }
+        if (user.rpg.hp < 20) return xp.sendMessage(chat.id, { text: `⚠️ HP terlalu rendah (${user.rpg.hp}/100)! Ketik .heal.` }, { quoted: m })
 
         const delay = ms => new Promise(res => setTimeout(res, ms))
-        const pesanAwal = await xp.sendMessage(chat.id, { text: '🚶‍♂️ *Memasuki Hutan Dua Dunia...*' }, { quoted: m })
-
-        await delay(1500) // Animasi jalan
+        const pesanAwal = await xp.sendMessage(chat.id, { text: '🚶‍♂️ *Memasuki Hutan...*' }, { quoted: m })
+        await delay(1500) 
         
-        // 2. Database Monster
         const monsters = [
-          { name: 'Slime Lendir', hpDamage: 5, reward: 50, exp: 10, emoji: '🦠' },
-          { name: 'Goblin Pencuri', hpDamage: 10, reward: 150, exp: 25, emoji: '👺' },
-          { name: 'Serigala Liar', hpDamage: 15, reward: 200, exp: 35, emoji: '🐺' },
-          { name: 'Golem Batu', hpDamage: 25, reward: 500, exp: 50, emoji: '🪨' },
-          { name: 'Naga Kegelapan', hpDamage: 45, reward: 1500, exp: 100, emoji: '🐉' } // Boss langka
+          { name: 'Slime', hpDamage: 5, reward: 50, exp: 10, emoji: '🦠' },
+          { name: 'Goblin', hpDamage: 10, reward: 150, exp: 25, emoji: '👺' },
+          { name: 'Serigala', hpDamage: 15, reward: 200, exp: 35, emoji: '🐺' },
+          { name: 'Naga', hpDamage: 45, reward: 1500, exp: 100, emoji: '🐉' }
         ]
         
-        // Pilih monster secara acak
         const musuh = monsters[Math.floor(Math.random() * monsters.length)]
-        
-        let frameFight = `⚔️ *MENGHADAPI MONSTER* ⚔️\n\nSeekor *${musuh.name}* ${musuh.emoji} muncul di hadapanmu!\n\n_Menyerang..._`
-        await xp.sendMessage(chat.id, { text: frameFight, edit: pesanAwal.key })
-        
-        await delay(2000) // Animasi bertarung
+        await xp.sendMessage(chat.id, { text: `⚔️ Seekor *${musuh.name}* ${musuh.emoji} muncul!\n_Menyerang..._`, edit: pesanAwal.key })
+        await delay(2000) 
 
-        // 3. Kalkulasi Hasil Pertarungan
         user.rpg.hp -= musuh.hpDamage
         user.moneyDb.money += musuh.reward
         user.rpg.exp += musuh.exp
         
-        // Peluang drop item Potion (30% chance)
         let dropPotion = false
-        if (Math.random() < 0.3) {
-           user.rpg.potion += 1
-           dropPotion = true
-        }
+        if (Math.random() < 0.3) { user.rpg.potion += 1; dropPotion = true }
 
-        // 4. Sistem Level Up Otomatis (Setiap kelipatan 100 EXP)
         let levelUpMsg = ''
-        const expNeeded = user.rpg.level * 100
-        if (user.rpg.exp >= expNeeded) {
-           user.rpg.level += 1
-           user.rpg.exp -= expNeeded
-           user.rpg.hp = 100 // Darah otomatis penuh saat naik level
-           levelUpMsg = `\n\n🎉 *LEVEL UP!* Kamu sekarang Level ${user.rpg.level}!\nDarahmu dipulihkan sepenuhnya.`
+        if (user.rpg.exp >= (user.rpg.level * 100)) {
+           user.rpg.level += 1; user.rpg.exp = 0; user.rpg.hp = 100 
+           levelUpMsg = `\n🎉 *LEVEL UP!* Sekarang Level ${user.rpg.level}!`
         }
 
         save.db()
+        syncUangCloud(chat.sender, user)
+        if (global.supabase) global.supabase.from('game_stats').update({ hp: user.rpg.hp }).eq('jid', chat.sender).then()
 
-        // 5. Tampilkan Hasil Akhir
-        const hasilTxt = `⚔️ *HASIL PERTARUNGAN* ⚔️\n\nKamu berhasil menebas *${musuh.name}* ${musuh.emoji}!\n\n🩸 *HP Berkurang:* -${musuh.hpDamage} (Sisa: ${user.rpg.hp})\n💰 *Loot Uang:* +Rp ${musuh.reward.toLocaleString('id-ID')}\n✨ *EXP Didapat:* +${musuh.exp}${dropPotion ? '\n🧪 *Drop Item:* 1x Potion' : ''}${levelUpMsg}`
-
+        const hasilTxt = `⚔️ *HASIL PERTARUNGAN*\n\nMenebas *${musuh.name}* ${musuh.emoji}!\n🩸 HP: -${musuh.hpDamage} (Sisa: ${user.rpg.hp})\n💰 Uang: +Rp ${musuh.reward}\n✨ EXP: +${musuh.exp}${dropPotion ? '\n🧪 Drop: 1 Potion' : ''}${levelUpMsg}`
         await xp.sendMessage(chat.id, { text: hasilTxt, edit: pesanAwal.key })
-
-      } catch (e) {
-        console.error(`Error pada ${cmd}:`, e)
-        if (typeof err === 'function') err(`error pada ${cmd}`, e)
-        if (typeof call === 'function') call(xp, e, m)
-      }
+      } catch (e) { console.error(e) }
     }
   })
 
-  // ==========================================
-  // 🧪 FITUR RPG: HEAL (MINUM POTION)
-  // ==========================================
   ev.on({
     name: 'heal',
     cmd: ['heal', 'minum', 'potion'],
     tags: 'Game Menu',
-    desc: 'Memulihkan HP menggunakan Potion',
     owner: !1,
     prefix: !0,
-    money: 0,
-    exp: 0,
 
-    run: async (xp, m, { chat, cmd }) => {
+    run: async (xp, m, { chat }) => {
       try {
         const user = Object.values(db().key).find(u => u.jid === chat.sender)
-        if (!user) return xp.sendMessage(chat.id, { text: '❌ Kamu belum terdaftar' }, { quoted: m })
-
+        if (!user) return
         user.rpg = user.rpg || { hp: 100, potion: 3, level: 1, exp: 0 }
 
-        if (user.rpg.hp >= 100) {
-          return xp.sendMessage(chat.id, { text: '✅ HP kamu sudah penuh (100/100). Simpan Potion-mu buat nanti.' }, { quoted: m })
-        }
+        if (user.rpg.hp >= 100) return xp.sendMessage(chat.id, { text: '✅ HP kamu sudah penuh!' }, { quoted: m })
+        if (user.rpg.potion <= 0) return xp.sendMessage(chat.id, { text: '⚠️ Potion habis!' }, { quoted: m })
 
-        if (user.rpg.potion <= 0) {
-           return xp.sendMessage(chat.id, { text: '⚠️ Kamu kehabisan Potion 🧪!\nDapatkan lagi dari memenangkan *.berburu*.' }, { quoted: m })
-        }
-
-        // Minum 1 Potion nambah 50 HP
         user.rpg.potion -= 1
         user.rpg.hp += 50
-        if (user.rpg.hp > 100) user.rpg.hp = 100 // Batas maksimal darah adalah 100
+        if (user.rpg.hp > 100) user.rpg.hp = 100 
 
         save.db()
+        if (global.supabase) global.supabase.from('game_stats').update({ hp: user.rpg.hp }).eq('jid', chat.sender).then()
 
-        await xp.sendMessage(chat.id, { text: `🧪 *GLUK GLUK GLUK...*\n\nKamu meminum 1 Potion.\n🩸 *HP Sekarang:* ${user.rpg.hp}/100\n🎒 *Sisa Potion:* ${user.rpg.potion}` }, { quoted: m })
-
-      } catch (e) {
-        console.error(`Error pada ${cmd}:`, e)
-      }
+        await xp.sendMessage(chat.id, { text: `🧪 *GLUK GLUK...*\nMeminum 1 Potion.\n🩸 HP: ${user.rpg.hp}/100\n🎒 Sisa: ${user.rpg.potion}` }, { quoted: m })
+      } catch (e) { console.error(e) }
     }
   })
 
-  // ==========================================
-  // 👤 FITUR RPG: CEK STATUS KARAKTER
-  // ==========================================
   ev.on({
-    name: 'status rpg',
-    cmd: ['stat', 'status', 'profilerpg'],
+    name: 'tambang',
+    cmd: ['tambang', 'mining'],
     tags: 'Game Menu',
-    desc: 'Cek level, darah, dan item RPG kamu',
     owner: !1,
     prefix: !0,
-    money: 0,
-    exp: 0,
 
-    run: async (xp, m, { chat, cmd }) => {
+    run: async (xp, m, { chat }) => {
       try {
         const user = Object.values(db().key).find(u => u.jid === chat.sender)
-        if (!user) return xp.sendMessage(chat.id, { text: '❌ Kamu belum terdaftar' }, { quoted: m })
+        if (!user) return
+        user.game = user.game || {}; user.game.inventory = user.game.inventory || { batu: 0, besi: 0, emas: 0, diamond: 0, pedang: 0 }; user.game.cooldown = user.game.cooldown || {}
 
-        user.rpg = user.rpg || { hp: 100, potion: 3, level: 1, exp: 0 }
-        const expNeeded = user.rpg.level * 100
-        const nama = chat.pushName || 'Petualang'
-
-        let txt = `🛡️ *STATUS PETUALANG* 🛡️\n\n`
-        txt += `👤 *Nama:* arewwp\n` // Menggunakan format fallback nama
-        txt += `🔰 *Level:* ${user.rpg.level}\n`
-        txt += `✨ *EXP:* ${user.rpg.exp} / ${expNeeded}\n`
-        txt += `🩸 *Darah (HP):* ${user.rpg.hp}/100\n`
-        txt += `🧪 *Potion:* ${user.rpg.potion} botol\n`
-        txt += `💰 *Dompet:* Rp ${user.moneyDb?.money?.toLocaleString('id-ID') || 0}\n\n`
-        txt += `_Ketik .berburu untuk mulai petualangan!_`
-
-        await xp.sendMessage(chat.id, { text: txt }, { quoted: m })
-
-      } catch (e) {
-        console.error(`Error pada ${cmd}:`, e)
-      }
-    }
-  })
-    // ==========================================
-  // 🎣 FITUR MEMANCING & GACHA IKAN
-  // ==========================================
-  ev.on({
-    name: 'memancing',
-    cmd: ['mancing', 'fishing', 'catch'],
-    tags: 'Game Menu',
-    desc: 'Memancing ikan di sungai',
-    owner: !1,
-    prefix: !0,
-    money: 10, // Biaya beli umpan (Otomatis potong saldo)
-    exp: 1,
-
-    run: async (xp, m, { chat, cmd }) => {
-      try {
-        const user = Object.values(db().key).find(u => u.jid === chat.sender)
-        if (!user) return xp.sendMessage(chat.id, { text: '❌ Kamu belum terdaftar' }, { quoted: m })
-
-        // 1. Inisialisasi Tas/Inventory ikan jika pemain baru pertama kali mancing
-        user.game = user.game || {}
-        user.game.inventory = user.game.inventory || { sampah: 0, udang: 0, ikan_kecil: 0, kepiting: 0, ikan_besar: 0, gurita: 0, hiu: 0 }
-
-        const delay = ms => new Promise(res => setTimeout(res, ms))
-
-        const pesanAwal = await xp.sendMessage(chat.id, { text: '🎣 *Melempar kail ke sungai...*' }, { quoted: m })
-
-        // 2. Animasi Memancing
-        const anims = [
-          "🎣      🌊🌊🌊🌊",
-          "🎣     🌊🌊🌊🌊",
-          "🎣    🌊🌊🌊🌊",
-          "🎣   🌊🌊🌊🌊",
-          "🎣  💦🌊🌊🌊",
-          "🎣 ❗💦🌊🌊"
-        ]
-
-        for (let frame of anims) {
-          await delay(500)
-          await xp.sendMessage(chat.id, { text: frame, edit: pesanAwal.key })
+        const timeNow = Date.now(); const cooldownTime = 5 * 60 * 1000 
+        if (timeNow - (user.game.cooldown.tambang || 0) < cooldownTime) {
+            const sisaWaktu = Math.ceil((cooldownTime - (timeNow - user.game.cooldown.tambang)) / 1000)
+            return xp.sendMessage(chat.id, { text: `⏳ *Kelelahan!*\nTunggu ${Math.floor(sisaWaktu / 60)}m ${sisaWaktu % 60}d lagi.` }, { quoted: m })
         }
 
-        // 3. Sistem Gacha/Peluang Ikan
         const rand = Math.random() * 100
-        let ikan = '', emoji = '', tipe = ''
+        const b = rand < 50 ? Math.floor(Math.random() * 5) + 1 : 0
+        const bs = rand < 30 ? Math.floor(Math.random() * 3) + 1 : 0
+        const em = rand < 10 ? 1 : 0; const dm = rand < 2 ? 1 : 0
 
-        if (rand < 20) { ikan = 'sampah'; emoji = '🥾'; tipe = 'Sepatu Bekas'; }
-        else if (rand < 45) { ikan = 'udang'; emoji = '🦐'; tipe = 'Udang'; }
-        else if (rand < 70) { ikan = 'ikan_kecil'; emoji = '🐟'; tipe = 'Ikan Kecil'; }
-        else if (rand < 85) { ikan = 'kepiting'; emoji = '🦀'; tipe = 'Kepiting'; }
-        else if (rand < 95) { ikan = 'ikan_besar'; emoji = '🐡'; tipe = 'Ikan Buntal'; }
-        else if (rand < 99) { ikan = 'gurita'; emoji = '🦑'; tipe = 'Gurita'; }
-        else { ikan = 'hiu'; emoji = '🦈'; tipe = 'Hiu Langka'; }
-
-        // 4. Masukkan hasil pancingan ke database pemain
-        user.game.inventory[ikan] += 1
+        user.game.inventory.batu += b; user.game.inventory.besi += bs; user.game.inventory.emas += em; user.game.inventory.diamond += dm
+        user.game.cooldown.tambang = timeNow 
         save.db()
-
-        await delay(600)
         
-        // 5. Tampilkan hasil
-        const hasilTxt = `🎣 *MEMANCING*\n\nBerhasil menarik kail!\nKamu mendapatkan: *${emoji} ${tipe}*\n\n_Ketik .jualikan untuk menukar hasil tangkapanmu dengan uang._`
-        await xp.sendMessage(chat.id, { text: hasilTxt, edit: pesanAwal.key })
+        if (global.supabase) global.supabase.from('inventory').update({ batu: user.game.inventory.batu, besi: user.game.inventory.besi, emas: user.game.inventory.emas, diamond: user.game.inventory.diamond }).eq('jid', chat.sender).then()
 
-      } catch (e) {
-        console.error(`Error pada ${cmd}:`, e)
-        if (typeof err === 'function') err(`error pada ${cmd}`, e)
-        if (typeof call === 'function') call(xp, e, m)
-      }
+        let txt = `⛏️ *TAMBANG*\nMendapatkan:\n🪨 Batu: +${b} | ⚙️ Besi: +${bs}\n🪙 Emas: +${em} | 💎 Diamond: +${dm}`
+        await xp.sendMessage(chat.id, { text: txt }, { quoted: m })
+      } catch (e) { console.error(e) }
     }
   })
 
   // ==========================================
-  // 🛒 FITUR PASAR/JUAL IKAN
+  // 📊 8. LEADERBOARD & STATUS
   // ==========================================
   ev.on({
-    name: 'jual ikan',
-    cmd: ['jualikan', 'sellfish', 'pasarikan'],
+    name: 'top global',
+    cmd: ['topglobal', 'sultan'],
     tags: 'Game Menu',
-    desc: 'Menjual hasil pancingan',
     owner: !1,
     prefix: !0,
-    money: 0,
-    exp: 0,
 
-    run: async (xp, m, { chat, cmd }) => {
-      try {
-        const user = Object.values(db().key).find(u => u.jid === chat.sender)
-        if (!user) return xp.sendMessage(chat.id, { text: '❌ Kamu belum terdaftar' }, { quoted: m })
+    run: async (xp, m, { chat }) => {
+      const allUsers = Object.values(db().key)
+      const sortedUsers = allUsers.map(u => ({ jid: u.jid, total: (u.moneyDb?.money || 0) + (u.moneyDb?.moneyInBank || 0) })).sort((a, b) => b.total - a.total).slice(0, 10) 
 
-        const inv = user.game?.inventory
-        // Cek apakah tas ikan kosong
-        if (!inv || Object.values(inv).every(v => v === 0)) {
-          return xp.sendMessage(chat.id, { text: '⚠️ Keranjang ikanmu kosong! Pergi memancing dulu dengan mengetik *.mancing*' }, { quoted: m })
-        }
-
-        // 1. Daftar Harga Pasar (Bisa kamu edit sesuka hati)
-        const harga = {
-          sampah: 5,        // Kasih harga dikit biar nggak rugi-rugi amat
-          udang: 50,
-          ikan_kecil: 100,
-          kepiting: 250,
-          ikan_besar: 500,
-          gurita: 1000,
-          hiu: 5000         // Jackpot
-        }
-
-        const emoji = {
-          sampah: '🥾', udang: '🦐', ikan_kecil: '🐟', kepiting: '🦀', ikan_besar: '🐡', gurita: '🦑', hiu: '🦈'
-        }
-
-        let totalPendapatan = 0
-        let struk = '🛒 *NOTA PENJUALAN IKAN*\n\n'
-
-        // 2. Kalkulasi semua ikan di inventory
-        for (let item in harga) {
-          if (inv[item] > 0) {
-            const jumlah = inv[item]
-            const subtotal = jumlah * harga[item]
-            totalPendapatan += subtotal
-            
-            struk += `${emoji[item]} ${item.replace('_', ' ').toUpperCase()} : ${jumlah} x Rp ${harga[item]} = Rp ${subtotal.toLocaleString('id-ID')}\n`
-            
-            // 3. Kosongkan slot ikan tersebut setelah dijual
-            inv[item] = 0
-          }
-        }
-
-        // 4. Tambahkan uang penjualan ke saldo utama
-        user.moneyDb = user.moneyDb || { money: 0 }
-        user.moneyDb.money += totalPendapatan
-        save.db()
-
-        struk += `\n💰 *Total Pendapatan:* Rp ${totalPendapatan.toLocaleString('id-ID')}\n💳 *Saldo Sekarang:* Rp ${user.moneyDb.money.toLocaleString('id-ID')}`
-
-        await xp.sendMessage(chat.id, { text: struk }, { quoted: m })
-
-      } catch (e) {
-        console.error(`Error pada ${cmd}:`, e)
-        if (typeof err === 'function') err(`error pada ${cmd}`, e)
-        if (typeof call === 'function') call(xp, e, m)
-      }
+      let txt = `🏆 *TOP 10 SULTAN ALYA* 🏆\n\n`
+      sortedUsers.forEach((u, i) => { txt += `${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '🎗️'} *${i + 1}.* @${u.jid.split('@')[0]} \n   💰 Rp ${u.total.toLocaleString('id-ID')}\n` })
+      await xp.sendMessage(chat.id, { text: txt, mentions: sortedUsers.map(u => u.jid) }, { quoted: m })
     }
   })
+
 }

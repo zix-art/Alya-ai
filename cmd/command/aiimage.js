@@ -77,7 +77,7 @@ export default function aiimage(ev) {
         // ==========================================
         await xp.sendMessage(chat.id, {
           image: { url: resultImage },
-          caption: `✨ *AI NANO EDIT*\n\n💬 *Perintah:* ${prompt}\n> *Powered by NeoAPIs*`
+          caption: `✨ *AI NANO EDIT*\n\n💬 *Perintah:* ${prompt}\n> *Powered by Alya-Ai*`
         }, { quoted: m })
 
         await xp.sendMessage(chat.id, { react: { text: '✅', key: m.key } })

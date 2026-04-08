@@ -54,7 +54,7 @@ export default function search(ev) {
         const imgData = data.result.results[0]
         const sisaLimit = data.remaining
 
-        const caption = `🔍 *BING IMAGE SEARCH*\n\n📝 *Pencarian:* ${data.result.query}\n📌 *Judul:* ${imgData.title}\n🌐 *Sumber:* ${imgData.source}\n🔋 *Limit API:* ${sisaLimit} tersisa\n\n> *Powered by ${global.botName || 'Code_Bot'}*`
+        const caption = `🔍 *BING IMAGE SEARCH*\n\n📝 *Pencarian:* ${data.result.query}\n📌 *Judul:* ${imgData.title}\n🌐 *Sumber:* ${imgData.source}\n\n> *Powered by ${global.botName || 'Code_Bot'}*`
 
         let buffer;
         try {

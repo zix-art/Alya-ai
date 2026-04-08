@@ -158,6 +158,69 @@ export default function tools(ev) {
   })
   
   ev.on({
+    name: 'Cek Kenon WA',
+    cmd: ['cekwa', 'cekaktif', 'ceknomor', 'cekkenon'],
+    tags: 'Tools',
+    desc: 'Mengecek apakah sebuah nomor aktif/terdaftar di WhatsApp (Tanpa API)',
+    owner: !1,
+    prefix: !0,
+
+    run: async (xp, m, { args, chat, prefix, cmd }) => {
+      try {
+        // Validasi input (bisa dari teks atau reply pesan)
+        if (!args[0] && !m.message?.extendedTextMessage?.contextInfo?.participant) {
+           return xp.sendMessage(chat.id, { 
+               text: `⚠️ *Format Salah!*\n\nMasukkan nomor target atau reply pesan orangnya.\n\n💬 *Contoh:* ${prefix}${cmd} 628xxx` 
+           }, { quoted: m })
+        }
+
+        // Ambil nomor target dan bersihkan dari karakter aneh
+        let target = args[0] ? args[0].replace(/[^0-9]/g, '') : m.message.extendedTextMessage.contextInfo.participant.split('@')[0]
+
+        // Rapikan format awalan nomor jadi 628
+        if (target.startsWith('08')) {
+            target = '628' + target.slice(2)
+        } else if (target.startsWith('8')) {
+            target = '62' + target
+        }
+
+        // Kirim react loading
+        await xp.sendMessage(chat.id, { react: { text: '⏳', key: m.key } })
+
+        /* ==================================================
+           SISTEM BAWAAN BAILEYS (Cek langsung ke server WA)
+           Return bentuknya array: [{ exists: true/false, jid: '...' }]
+        ================================================== */
+        const [result] = await xp.onWhatsApp(target)
+
+        if (result?.exists) {
+            // Jika nomor ada dan aktif di WA
+            let teks = `✅ *NOMOR TERDAFTAR*\n\n`
+            teks += `📱 *Nomor:* ${target}\n`
+            teks += `🔗 *ID WA:* ${result.jid}\n`
+            teks += `🟢 *Status:* Aktif & Bisa dihubungi`
+
+            await xp.sendMessage(chat.id, { text: teks }, { quoted: m })
+            await xp.sendMessage(chat.id, { react: { text: '✅', key: m.key } })
+        } else {
+            // Jika nomor tidak ada (Belum daftar, Kenon, atau Banned Permanen)
+            let teks = `❌ *TIDAK TERDAFTAR / KENON*\n\n`
+            teks += `📱 *Nomor:* ${target}\n`
+            teks += `🔴 *Status:* Nomor hangus, kena banned (kenon), atau tidak pernah terdaftar di WhatsApp.`
+
+            await xp.sendMessage(chat.id, { text: teks }, { quoted: m })
+            await xp.sendMessage(chat.id, { react: { text: '☠️', key: m.key } })
+        }
+
+      } catch (e) {
+        console.error(e)
+        await xp.sendMessage(chat.id, { react: { text: '⚠️', key: m.key } })
+        await xp.sendMessage(chat.id, { text: `❌ Terjadi kesalahan saat bot mencoba mengecek ke server WhatsApp.` }, { quoted: m })
+      }
+    }
+  })
+  
+  ev.on({
     name: 'enigma2text',
     cmd: ['enigma2text', 'en2text', 'en2txt'],
     tags: 'Tools Menu',

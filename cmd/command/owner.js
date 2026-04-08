@@ -51,6 +51,76 @@ export default function owner(ev) {
   })
   
   ev.on({
+    name: 'Cek Database',
+    cmd: ['cekdb', 'cekcloud', 'supastat'],
+    tags: 'Owner Menu',
+    desc: 'Mengecek status, kapasitas, dan ping Supabase Cloud',
+    owner: !0, // Hanya bisa diakses Owner
+    prefix: !0,
+
+    run: async (xp, m, { chat }) => {
+      try {
+        await xp.sendMessage(chat.id, { react: { text: '📡', key: m.key } })
+
+        const startPing = Date.now()
+
+        // Menghitung jumlah baris (player) di setiap tabel tanpa mengunduh isinya (Sangat Ringan)
+        const { count: countUsers, error: err1 } = await global.supabase
+          .from('users')
+          .select('*', { count: 'exact', head: true })
+
+        const { count: countInv, error: err2 } = await global.supabase
+          .from('inventory')
+          .select('*', { count: 'exact', head: true })
+
+        const endPing = Date.now()
+        const latency = endPing - startPing
+
+        if (err1 || err2) {
+            return xp.sendMessage(chat.id, { text: '❌ Gagal terhubung ke Supabase Cloud. Cek koneksi internet bot.' }, { quoted: m })
+        }
+
+        // --- KALKULASI KAPASITAS (Estimasi Logis) ---
+        // 1 Baris data user (beserta inventory & game_stats) rata-rata memakan 1.5 KB
+        const estimasiByte = countUsers * 1500 
+        const estimasiMB = (estimasiByte / (1024 * 1024)).toFixed(4)
+        
+        // Kapasitas Free Tier Supabase = 500 MB
+        const maxMB = 500
+        let persentase = ((estimasiMB / maxMB) * 100).toFixed(4)
+        
+        // Indikator Status
+        let statusKapasitas = '🟢 AMAN (Kosong melompong)'
+        if (persentase > 50) statusKapasitas = '🟡 LUMAYAN TERISI'
+        if (persentase > 80) statusKapasitas = '🔴 HAMPIR PENUH'
+
+        // Format Pesan Output
+        let txt = `☁️ *SUPABASE CLOUD STATUS* ☁️\n\n`
+        txt += `🔌 *Koneksi:* 🟢 Terhubung\n`
+        txt += `⚡ *Latency / Ping:* ${latency} ms\n\n`
+        
+        txt += `📊 *REKAMAN DATA (Tabel):*\n`
+        txt += `👤 Total Player: ${countUsers} baris\n`
+        txt += `🎒 Total Inventory: ${countInv} baris\n\n`
+
+        txt += `💾 *PENGGUNAAN PENYIMPANAN:*\n`
+        txt += `📈 Kapasitas Terpakai: ~${estimasiMB} MB\n`
+        txt += `📉 Limit Free Tier: ${maxMB} MB\n`
+        txt += `📊 Persentase: *${persentase}%*\n`
+        txt += `📋 Status: ${statusKapasitas}\n\n`
+
+        txt += `_Catatan: Persentase ini adalah estimasi dari perhitungan jumlah baris. 500 MB setara dengan kurang lebih 300.000 player terdaftar._`
+
+        await xp.sendMessage(chat.id, { text: txt }, { quoted: m })
+
+      } catch (e) {
+        console.error(e)
+        await xp.sendMessage(chat.id, { text: `❌ Terjadi kesalahan saat mengecek Database.\n\n_Log: ${e.message}_` }, { quoted: m })
+      }
+    }
+  })
+  
+  ev.on({
     name: 'clear chat',
     cmd: ['clearchat', 'bersihkan', 'clear'],
     tags: 'Owner Menu',

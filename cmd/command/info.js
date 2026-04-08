@@ -2,6 +2,7 @@ import fetch from 'node-fetch'
 import fs from 'fs'
 import path from 'path'
 import { execSync } from 'child_process'
+import { generateWAMessageFromContent } from 'baileys'
 import { performance } from 'perf_hooks'
 import { rct_txt } from '../../system/reaction.js'
 import os from 'os'
@@ -362,6 +363,9 @@ export default function info(ev) {
       prefix
     }) => {
       try {
+        // ==========================================
+        // 1. GENERATE TEKS MENU UTAMA (DISIMPAN DI VARIABEL txt)
+        // ==========================================
         const time = global.time.timeIndo('Asia/Jakarta', 'HH:mm'),
               filterTag = args[0]?.toLowerCase(),
               cmds = ev.cmd || [],
@@ -433,26 +437,64 @@ export default function info(ev) {
         txt += `> ketik ${prefix}help untuk melihat cara pakai ${botName}\n\n`
         txt += `${footer}`
 
-        await xp.sendMessage(chat.id, {
-          text: txt,
-          contextInfo: {
-            externalAdReply: {
-              body: `Ini adalah menu ${botName}`,
-              thumbnailUrl: thumbnail,
-              mediaType: 1,
-              renderLargerThumbnail: !0
-            },
-            forwardingScore: 1,
-            isForwarded: !0,
-            forwardedNewsletterMessageInfo: {
-              newsletterJid: idCh,
-              newsletterName: `klik disini untuk dukung ${botName}`
+        // ==========================================
+        // 2. MASUKKAN TEKS MENU KE DALAM CODE BLOCK RICH RESPONSE
+        // ==========================================
+        const subcontent = [
+          {
+            messageType: 5,
+            codeMetadata: {
+              codeLanguage: "txt", // Diubah jadi txt
+              codeBlocks: [
+                { 
+                  highlightType: 0, 
+                  codeContent: txt // Seluruh teks menu dimasukkan ke sini
+                }
+              ]
+            }
+          },
+          {
+            messageType: 3,
+            imageMetadata: {
+              imageUrl: {
+                imagePreviewUrl: "https://cdn.neoapis.xyz/f/o4emey.jpg", 
+                imageHighResUrl: "https://cdn.neoapis.xyz/f/o4emey.jpg",
+                sourceUrl: "https://cdn.neoapis.xyz/f/o4emey.jpg"
+              },
+              imageText: "7eppeli.org",
+              alignment: 2,
+              tapLinkUrl: "https://chat.whatsapp.com/CcFoOtNB1DBGLrcnWej4sE"
             }
           }
-        }, { quoted: m })
+        ];
+
+        // Buat struktur pesan Baileys
+        const msgSponsor = generateWAMessageFromContent(chat.id, {
+          botForwardedMessage: {
+            message: {
+              richResponseMessage: {
+                messageType: 1,
+                submessages: subcontent,
+                contextInfo: {
+                  forwardingScore: 1,
+                  isForwarded: true,
+                  forwardedAiBotMessageInfo: {
+                    botJid: "867051314767696@bot"
+                  },
+                  forwardOrigin: 4
+                }
+              }
+            }
+          }
+        }, { quoted: m }); // Me-reply chat user secara langsung
+
+        // Eksekusi kirim pesan 1 paket komplit
+        await xp.relayMessage(chat.id, msgSponsor.message, { messageId: msgSponsor.key.id });
+
       } catch (e) {
-        err(`error pada ${cmd}`, e)
-        call(xp, e, m)
+        if (typeof err === 'function') err(`error pada ${cmd}`, e)
+        if (typeof call === 'function') call(xp, e, m)
+        console.error(e)
       }
     }
   })
