@@ -3,6 +3,7 @@ import path from 'path'
 import AdmZip from "adm-zip"
 import { exec } from 'child_process'
 import { promisify } from 'util'
+import { generateWAMessageFromContent } from 'baileys'
 import { jadiBot } from '../../system/jadibot.js'
 const execAsync = promisify(exec)
 const config = path.join(dirname, './set/config.json'),
@@ -46,6 +47,91 @@ export default function owner(ev) {
       } catch (e) {
         err(`error pada ${cmd}`, e)
         call(xp, e, m)
+      }
+    }
+  })
+  
+  ev.on({
+    name: 'Read File',
+    cmd: ['readfile', 'getfile'],
+    tags: 'Owner Menu',
+    desc: 'Membaca isi file script dari dalam server',
+    owner: !0,
+    prefix: !0,
+
+    run: async (xp, m, { args, chat, prefix, cmd }) => {
+      try {
+        if (!args[0]) {
+          return xp.sendMessage(chat.id, { 
+            text: `⚠️ Masukkan nama atau lokasi filenya!\n\nContoh:\n*${prefix}${cmd} index.js*` 
+          }, { quoted: m })
+        }
+
+        const filePath = args.join(' ')
+
+        if (!fs.existsSync(filePath)) {
+          return xp.sendMessage(chat.id, { text: `❌ File *${filePath}* tidak ditemukan di dalam server.` }, { quoted: m })
+        }
+
+        // Membaca isi file
+        const fileContent = fs.readFileSync(filePath, 'utf-8')
+
+        // Menyusun Rich Response Message
+        const subcontent = [
+          {
+            messageType: 5,
+            codeMetadata: {
+              codeLanguage: "javascript", // Diset jadi JS biar ada syntax highlighting
+              codeBlocks: [
+                {
+                  highlightType: 0,
+                  codeContent: fileContent // Seluruh isi file langsung dilempar ke sini
+                }
+              ]
+            }
+          },
+          {
+            messageType: 3,
+            imageMetadata: {
+              imageUrl: {
+                // Jangan lupa isi link gambar aktif biar gak error
+                imagePreviewUrl: "https://cdn.neoapis.xyz/f/o4emey.jpg", 
+                imageHighResUrl: "https://cdn.neoapis.xyz/f/o4emey.jpg",
+                sourceUrl: "https://cdn.neoapis.xyz/f/o4emey.jpg"
+              },
+              imageText: `File: ${filePath}`, // Nama file muncul di bawah gambar
+              alignment: 2,
+              tapLinkUrl: "https://t.me/XzC_Exposed" // Link Telegram
+            }
+          }
+        ];
+
+        // Membentuk struktur pesan Baileys
+        const msg = generateWAMessageFromContent(chat.id, {
+          botForwardedMessage: {
+            message: {
+              richResponseMessage: {
+                messageType: 1,
+                submessages: subcontent,
+                contextInfo: {
+                  forwardingScore: 1,
+                  isForwarded: true,
+                  forwardedAiBotMessageInfo: {
+                    botJid: "867051314767696@bot"
+                  },
+                  forwardOrigin: 4
+                }
+              }
+            }
+          }
+        }, { quoted: m }); // Membalas (reply) command dari Owner
+
+        // Mengirimkan hasilnya
+        await xp.relayMessage(chat.id, msg.message, { messageId: msg.key.id });
+
+      } catch (e) {
+        console.error(e)
+        await xp.sendMessage(chat.id, { text: `❌ Terjadi kesalahan saat membaca file: ${e.message}` }, { quoted: m })
       }
     }
   })

@@ -12,6 +12,41 @@ const Jimp = require('jimp')
 
 export default function maker(ev) {
   ev.on({
+    name: 'ptv',
+    cmd: ['ptv', 'p'],
+    tags: 'Tools Menu',
+    desc: 'generate ptv studio',
+    owner: !1,
+    prefix: !0,
+    money: 100,
+    exp: 0.1,
+
+    run: async (xp, m, {
+      args,
+      chat,
+      cmd
+    }) => {
+      try {
+        const quoted = m.message?.extendedTextMessage?.contextInfo?.quotedMessage,
+              video = quoted?.videoMessage || m.message?.videoMessage
+
+        if (!video) {
+          return xp.sendMessage(chat.id, { text: 'reply atau kirim video yang ingin dijadikan ptv' }, { quoted: m })
+        }
+
+        const buffer = await downloadMediaMessage({ message: quoted || m.message }, 'buffer')
+
+        if (!buffer) throw new Error('gagal mengunduh media')
+
+        await xp.sendMessage(chat.id, { video: buffer, mimetype: 'video/mp4', ptv: !0 })
+      } catch (e) {
+        err(`error pada ${cmd}`, e)
+        call(xp, e, m)
+      }
+    }
+  })
+
+  ev.on({
     name: 'graffiti text',
     cmd: ['graffiti', 'grafiti', 'grafititext'],
     tags: 'Maker Menu',
@@ -69,6 +104,40 @@ export default function maker(ev) {
         } else {
             await xp.sendMessage(chat.id, { text: `❌ Gagal membuat grafiti. API menolak koneksi atau sedang gangguan.` }, { quoted: m })
         }
+      }
+    }
+  })
+  
+  ev.on({
+    name: 'to vn',
+    cmd: ['tovn', 'vn'],
+    tags: 'Tools Menu',
+    desc: 'ubah lagu jadi vn',
+    owner: !1,
+    prefix: !0,
+    money: 100,
+    exp: 0.1,
+
+    run: async (xp, m, {
+      chat,
+      cmd
+    }) => {
+      try {
+        const q = m.message?.extendedTextMessage?.contextInfo?.quotedMessage,
+              reply = ['audioMessage', 'videoMessage']
+                .map(v => m.message?.[v] || q?.[v])
+                .find(Boolean)
+
+        if (!reply) return xp.sendMessage(chat.id, { text: 'reply atau kirim audio atau video yang akan diubah ke vn' }, { quoted: m })
+
+        let audio
+        audio = await downloadMediaMessage({ message: q || m.message }, 'buffer')
+        if (!audio) throw new Error('media tidak terunduh')
+
+        await vn(xp, audio, m)
+      } catch (e) {
+        err(`error pada ${cmd}`, e)
+        call(xp, e, m)
       }
     }
   })
