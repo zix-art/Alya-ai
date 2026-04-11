@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 
-// Kredensial rahasia Supabase milikmu
+// Kredensial Supabase milikmu
 const supabaseUrl = 'https://djnvzveoqeynltpjluep.supabase.co'
 const supabaseKey = 'Sb_publishable_lUaAvypwnnyBId-VFsOBvQ_I9x3cDtt'
 

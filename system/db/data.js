@@ -1,85 +1,24 @@
-import fs from 'fs'
-import path from 'path'
-import { fileURLToPath } from 'url'
-import supabase from './supabase.js' // 👈 Import Supabase
-
-const __filename = fileURLToPath(import.meta.url)
-const dirname = path.dirname(__filename)
-
-const database = path.join(dirname, 'database.json'),
-      dataGc = path.join(dirname, 'datagc.json'),
-      datagame = path.join(dirname, 'datagame.json'),
-      bankdb = path.join(dirname, 'bank.json')
-
-let init = (() => {
-  const load = (file, def = { key: {} }) => {
-    if (!fs.existsSync(file))
-      return fs.writeFileSync(file, JSON.stringify(def, null, 2)), def
-
-    try {
-      const data = JSON.parse(fs.readFileSync(file))
-      return data ? data : (fs.writeFileSync(file, JSON.stringify(def, null, 2)), def)
-    } catch (e) {
-      console.error(`${path.basename(file)} rusak`, e)
-      fs.writeFileSync(file, JSON.stringify(def, null, 2))
-      return def
-    }
-  }
-
-  const inBank = () => load(bankdb, { key: { saldo: 0, tax: '12%' } }),
-        gm = () => load(datagame, { key: { farm: {} } })
-
-  return {
-    db: load(database),
-    gc: load(dataGc),
-    gm: gm(),
-    bnk: inBank()
-  }
-})()
-
-const db = () => init.db,
-      gc = () => init.gc,
-      gm = () => init.gm,
-      bnk = () => init.bnk
-
-const getUsr = jid => Object.values(db().key).find(u => u.jid === jid)
-
-const getGc = chat => gc()?.key && Object.values(gc().key).find(g => String(g?.id) === String(chat.id)) || null
+import supabase from './supabase.js'
 
 // ==========================================
-// OPTIMASI DATABASE: Auto-Save Interval
+// 🛡️ DUMMY FUNCTION (ANTI-CRASH)
+// Mencegah error jika ada fitur lama yang masih memanggil fungsi db() / save.db()
 // ==========================================
-let needSaveDb = !1,
-    needSaveGc = !1,
-    needSaveGm = !1
+const init = { db: { key: {} }, gc: { key: {} }, gm: { key: {} }, bnk: { key: {} } }
+const db = () => init.db
+const gc = () => init.gc
+const gm = () => init.gm
+const bnk = () => init.bnk
+const getGc = () => null
 
-const save = {
-  db() { needSaveDb = !0 },
-  gc() { needSaveGc = !0 },
-  gm() { needSaveGm = !0 }
+// Fungsi save diubah menjadi kosong agar bot tidak lagi menyimpan JSON ke memori HP
+const save = { 
+    db: () => {}, 
+    gc: () => {}, 
+    gm: () => {} 
 }
-
-setInterval(async () => {
-  if (needSaveDb) {
-    try {
-      await fs.promises.writeFile(database, JSON.stringify(init.db, null, 2))
-      needSaveDb = !1
-    } catch (e) { if(typeof erl !== 'undefined') erl(e, 'save.db') }
-  }
-  if (needSaveGc) {
-    try {
-      await fs.promises.writeFile(dataGc, JSON.stringify(init.gc, null, 2))
-      needSaveGc = !1
-    } catch (e) { if(typeof erl !== 'undefined') erl(e, 'save.gc') }
-  }
-  if (needSaveGm) {
-    try {
-      await fs.promises.writeFile(datagame, JSON.stringify(init.gm, null, 2))
-      needSaveGm = !1
-    } catch (e) { if(typeof erl !== 'undefined') erl(e, 'save.gm') }
-  }
-}, 60000) 
 // ==========================================
+
 
 const listRole = [
   'Gak Kenal',
@@ -97,21 +36,26 @@ const listRole = [
   'Soulmate'
 ]
 
-const role = jid => {
-  const user = getUsr(jid)
-  if (!user?.ai) return
-
-  const exp = user.exp || 0,
-        maxExp = 2000,
-        len = listRole.length,
-        step = maxExp / len,
-        idx = Math.min(len - 1, Math.floor(exp / step)),
-        newRole = listRole[idx]
-
-  user.ai.role !== newRole && (
-    user.ai.role = newRole,
-    !0
-  )
+// Diubah menjadi Async dan langsung terhubung ke Supabase
+const role = async (jid) => {
+  try {
+      const { data: user } = await supabase.from('users').select('exp, role').eq('id', jid).single()
+      if (!user) return
+    
+      const exp = user.exp || 0,
+            maxExp = 2000,
+            len = listRole.length,
+            step = maxExp / len,
+            idx = Math.min(len - 1, Math.floor(exp / step)),
+            newRole = listRole[idx]
+    
+      if (user.role !== newRole) {
+          // Update ke Cloud jika role naik tingkat
+          await supabase.from('users').update({ role: newRole }).eq('id', jid)
+      }
+  } catch (e) {
+      console.error('Error pengecekan role:', e.message)
+  }
 }
 
 const randomId = m => {
@@ -131,107 +75,37 @@ const randomId = m => {
 
 const authUser = async (m) => {
   try {
-    const chat = global.chat(m),
-          group = !!chat?.group,
-          e = o => Object.values(o || {}).some(u => u.jid === chat.sender),
-          time = global.time.timeIndo("Asia/Jakarta", "DD-MM-YYYY")
+    const chat = global.chat(m)
 
-    if (
-      !chat.sender?.endsWith('@s.whatsapp.net') ||
-      (group && chat.sender && chat.sender !== chat.sender)
-    ) return
+    if (!chat.sender?.endsWith('@s.whatsapp.net')) return
 
     const nama = chat.pushName?.trim().slice(0, 20) || 'Petualang'
 
-    // 1. Simpan ke JSON Lokal (Jika belum terdaftar)
-    if (!e(db().key)) {
-      let k = nama, i = 1
-      while (db().key[k]) k = `${nama}_${i++}`
-
-      db().key[k] = {
-        jid: chat.sender,
-        noId: randomId(m),
-        acc: time,
-        ban: !1,
-        cmd: 0,
-        exp: 0,
-        moneyDb: {
-          money: 2e5,
-          moneyInBank: 0
-        },
-        ai: {
-          bell: !1,
-          chat: 0,
-          role: listRole[0]
-        },
-        afk: {
-          status: !1,
-          reason: '',
-          afkStart: ''
-        },
-        game: {
-          farm: !1,
-          dead: !1,
-          robbery: {
-            cost: 3
-          },
-          buff: {},
-          debuff: {}
-        }
-      }
-      save.db()
-    }
-
-    // 2. ✨ INTEGRASI SUPABASE CLOUD ✨
-    // Menyinkronkan data pengguna secara background ke Supabase.
-    // ignoreDuplicates: true memastikan data lama di cloud tidak keriset.
-    try {
-      await supabase.from('users').upsert([{ jid: chat.sender, name: nama }], { onConflict: 'jid', ignoreDuplicates: true })
-      await supabase.from('inventory').upsert([{ jid: chat.sender }], { onConflict: 'jid', ignoreDuplicates: true })
-      await supabase.from('game_stats').upsert([{ jid: chat.sender }], { onConflict: 'jid', ignoreDuplicates: true })
-    } catch (err) {
-      // Abaikan error jika koneksi sedang bermasalah agar bot tetap berjalan
+    // ==========================================
+    // ✨ REGISTRASI OTOMATIS KE SUPABASE CLOUD ✨
+    // ==========================================
+    const { data: isExist } = await supabase.from('users').select('id').eq('id', chat.sender).single()
+    
+    // Jika belum terdaftar di Cloud, masukkan data default
+    if (!isExist) {
+        await supabase.from('users').insert([{ 
+            id: chat.sender, 
+            name: nama,
+            money: 200000, // Uang awal Rp 200.000 (disamakan dengan kode lamamu)
+            bank: 0,
+            exp: 0,
+            role: listRole[0],
+            limit_user: 50
+        }])
     }
 
   } catch (e) {
-    console.error('error pada authUser', e)
+    console.error('Error saat authUser ke Supabase:', e.message)
   }
 }
 
-const authFarm = async m => {
-  try {
-    const chat = global.chat(m),
-          userDb = getUsr(chat.sender),
-          gameDb = Object.values(gm().key.farm).find(u => u.jid === chat.sender),
-          group = !!chat?.group,
-          time = global.time.timeIndo("Asia/Jakarta", "DD-MM-YYYY HH:mm:ss"),
-          nama = chat.pushName?.trim().slice(0, 20),
-          costMny =
-            (userDb?.moneyDb?.money ?? 0) +
-            (userDb?.moneyDb?.moneyInBank ?? 0)
-
-    if (
-      !chat.sender?.endsWith('@s.whatsapp.net') ||
-      gameDb
-    ) return
-
-    let k = nama, i = 1
-    while (gm().key.farm[k]) k = `${nama}_${i++}`
-
-    gm().key.farm[k] = {
-      jid: chat.sender,
-      set: time,
-      exp: userDb?.exp || 0,
-      moneyDb: {
-        money: costMny
-      }
-    }
-
-    save.gm()
-  } catch (e) {
-    console.log('error pada authFarm', e)
-  }
-}
+// Fitur Farm auth sudah ditangani oleh gamefunc.js yang baru, jadi ini dikosongkan
+const authFarm = async (m) => {} 
 
 export {
   init,
