@@ -1,6 +1,7 @@
 import axios from 'axios'
 import fromdt from 'form-data'
 import fs from 'fs'
+import * as googleTTS from 'google-tts-api'
 import os from 'os'
 import { fileTypeFromBuffer } from 'file-type' // Pastikan kamu sudah import ini di atas
 import path from 'path'
@@ -158,9 +159,133 @@ export default function tools(ev) {
   })
   
   ev.on({
+    name: 'ss web',
+    cmd: ['ssweb'],
+    tags: 'Tools Menu',
+    desc: 'Mengambil tangkapan layar sebuah website',
+    owner: !1,
+    prefix: !0,
+    money: 500,
+    exp: 0.1,
+
+    run: async (xp, m, { chat, cmd, args, prefix }) => {
+      try {
+        // Ambil link dari argumen pertama
+        let link = args[0]
+
+        if (!link) return xp.sendMessage(chat.id, { 
+            text: `⚠️ *Linknya mana komandan?*\n\nContoh penggunaan:\n*${prefix}${cmd} https://google.com*` 
+        }, { quoted: m })
+
+        await xp.sendMessage(chat.id, { react: { text: '📸', key: m.key } })
+
+        // Pastikan link diawali http/https
+        let url = link.startsWith('http') ? link : 'https://' + link
+        
+        // Encode URL biar API-nya nggak bingung kalau ada karakter aneh
+        let encodeUrl = encodeURIComponent(url)
+
+        // Panggil axios (pastikan sudah ada require/import axios di file mu)
+
+        // API Siputzx
+        const apiUrl = `https://api.siputzx.my.id/api/tools/ssweb?url=${encodeUrl}&device=desktop&theme=dark&fullPage=false`
+
+        // Mengambil gambar dalam bentuk Buffer karena outputnya langsung PNG
+        const response = await axios.get(apiUrl, {
+            responseType: 'arraybuffer',
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Mobile Safari/537.36',
+                'Referer': 'https://app.siputzx.my.id/playground'
+            }
+        })
+
+        const imageBuffer = Buffer.from(response.data, 'binary')
+
+        // Kirim hasilnya ke grup/private chat
+        await xp.sendMessage(chat.id, { 
+            image: imageBuffer, 
+            caption: `✅ *BERHASIL SCREENSHOT*\n\n🌐 *URL:* ${url}` 
+        }, { quoted: m })
+
+        await xp.sendMessage(chat.id, { react: { text: '✅', key: m.key } })
+
+      } catch (e) {
+        console.error(`Error pada ${cmd}:`, e)
+        if (typeof err === 'function') err(`error pada ${cmd}`, e)
+        xp.sendMessage(chat.id, { text: `❌ Gagal mengambil screenshot. API-nya mungkin lagi gangguan atau link lu nggak valid!` }, { quoted: m })
+      }
+    }
+  })
+  
+  ev.on({
+    name: 'get sw',
+    cmd: ['getsw', 'colongsw'],
+    tags: 'Tools Menu',
+    desc: 'Mengambil status WA orang yang sudah dibaca bot',
+    owner: !1,
+    prefix: !0,
+    money: 200,
+    exp: 0.1,
+
+    // Pastikan parameter 'store' ada di dalam kurung kurawal ini
+    run: async (xp, m, { chat, cmd, args, prefix, store }) => {
+      try {
+        const quoted = m.message?.extendedTextMessage?.contextInfo
+        
+        // Cek target: bisa dari tag, reply pesan orangnya, atau ketik nomornya
+        let target = quoted?.participant || quoted?.mentionedJid?.[0] 
+        
+        if (!target && args.length > 0) {
+            target = args[0].replace(/[^0-9]/g, '') + '@s.whatsapp.net'
+        }
+
+        if (!target) {
+            return xp.sendMessage(chat.id, { 
+                text: `⚠️ *Cara Penggunaan:*\n\nTag orangnya atau ketik nomornya untuk mengambil status WA-nya.\n\n*Contoh:*\n${prefix}${cmd} @user\n${prefix}${cmd} 628xxx` 
+            }, { quoted: m })
+        }
+
+        await xp.sendMessage(chat.id, { react: { text: '⏳', key: m.key } })
+
+        // Mengambil kumpulan chat dari database memori bot (status@broadcast)
+        // Jika bot kamu memakai store, datanya tersimpan di sini
+        const swMemori = store?.messages['status@broadcast']?.array || []
+
+        // Menyaring (filter) status khusus milik target yang diminta
+        const statusTarget = swMemori.filter(msg => msg.key.participant === target)
+
+        if (statusTarget.length === 0) {
+            await xp.sendMessage(chat.id, { react: { text: '❌', key: m.key } })
+            return xp.sendMessage(chat.id, { 
+                text: `❌ *Status tidak ditemukan!*\n\n_Kemungkinan:_\n1. Dia belum bikin status dalam 24 jam terakhir.\n2. Bot sedang mati/offline saat dia buat status.\n3. Nomor bot tidak disave oleh target (privasi WA).` 
+            }, { quoted: m })
+        }
+
+        // Jika ketemu, kirim semua statusnya satu per satu
+        await xp.sendMessage(chat.id, { text: `✅ Ditemukan *${statusTarget.length}* status dari target. Mengirim...` }, { quoted: m })
+
+        for (let sw of statusTarget) {
+            // Forward/teruskan status langsung ke chat
+            await xp.sendMessage(chat.id, { forward: sw }, { quoted: m })
+            
+            // Kasih jeda 1.5 detik per status biar bot gak disangka spam oleh sistem WA
+            await new Promise(resolve => setTimeout(resolve, 1500))
+        }
+
+        await xp.sendMessage(chat.id, { react: { text: '✅', key: m.key } })
+
+      } catch (e) {
+        console.error(`Error pada ${cmd}:`, e)
+        if (typeof err === 'function') err(`error pada ${cmd}`, e)
+        xp.sendMessage(chat.id, { text: `❌ Terjadi kesalahan saat mengambil status. Pastikan memori (store) bot aktif.` }, { quoted: m })
+      }
+    }
+  })
+  
+  ev.on({
     name: 'Cek Kenon WA',
-    cmd: ['cekwa', 'cekaktif', 'ceknomor', 'cekkenon'],
-    tags: 'Tools',
+    cmd: ['cekkenon'],
+    tags: 'Tools Menu',
     desc: 'Mengecek apakah sebuah nomor aktif/terdaftar di WhatsApp (Tanpa API)',
     owner: !1,
     prefix: !0,
@@ -1312,7 +1437,7 @@ export default function tools(ev) {
     name: 'to url',
     cmd: ['tourl', 'url'],
     tags: 'Tools Menu',
-    desc: 'Mengubah media menjadi URL (NeoAPIs)',
+    desc: 'Mengubah media & stiker menjadi URL (NeoAPIs)',
     owner: !1,
     prefix: !0,
     money: 500,
@@ -1321,14 +1446,18 @@ export default function tools(ev) {
     run: async (xp, m, { chat, cmd }) => {
       try {
         const q = m.message?.extendedTextMessage?.contextInfo?.quotedMessage
-        const media = ['imageMessage', 'videoMessage', 'documentMessage', 'audioMessage']
+        
+        // 👇 PERBAIKAN: Menambahkan 'stickerMessage' ke dalam daftar deteksi
+        const mediaTypes = ['imageMessage', 'videoMessage', 'documentMessage', 'audioMessage', 'stickerMessage']
+        
+        const media = mediaTypes
           .map(v => m.message?.[v] || q?.[v])
           .find(Boolean)
           
         const name = chat.pushName || m.pushName || 'User'
         const time = global.time ? global.time.timeIndo("Asia/Jakarta", "HH") : Date.now()
 
-        if (!media) return xp.sendMessage(chat.id, { text: '❌ Reply media yang ingin dijadikan URL!' }, { quoted: m })
+        if (!media) return xp.sendMessage(chat.id, { text: '❌ Reply media atau stiker yang ingin dijadikan URL!' }, { quoted: m })
 
         await xp.sendMessage(chat.id, { react: { text: '⏳', key: m.key } })
 
@@ -1397,7 +1526,6 @@ export default function tools(ev) {
 
         // Format pesan menggunakan variabel bawaan template-mu
         let txt = `✅ Upload file berhasil\n\n`
-        // Pastikan variabel head, opb, botName, clb, body, btn, foot, line, thumbnail sudah terdefinisi di file globalmu
         txt += `${global.head || ''}${global.opb || ''} *${global.botName || 'Code_Bot'}* ${global.clb || ''}\n`
         txt += `${global.body || '│'} ${global.btn || '▸'} *URL:* ${res.url}\n`
         txt += `${global.body || '│'} ${global.btn || '▸'} *Type:* ${res.mimetype}\n`
@@ -1409,7 +1537,7 @@ export default function tools(ev) {
           contextInfo: {
             externalAdReply: {
               body: `Terima kasih telah menggunakan ${global.botName || 'Code_Bot'}`,
-              thumbnailUrl: global.thumbnail || res.url, // Menggunakan gambar yang diupload sebagai thumbnail jika ada
+              thumbnailUrl: global.thumbnail || res.url, 
               mediaType: 1,
               renderLargerThumbnail: !0
             },
@@ -1426,10 +1554,56 @@ export default function tools(ev) {
 
       } catch (e) {
         console.error(`Error pada ${cmd}:`, e)
-        // Jika global function err & call tidak terbaca, gunakan fallback ini:
         if (typeof err === 'function') err(`error pada ${cmd}`, e)
         if (typeof call === 'function') call(xp, e, m)
         else xp.sendMessage(chat.id, { text: `❌ Terjadi kesalahan: ${e.message}` }, { quoted: m })
+      }
+    }
+  })
+
+  ev.on({
+    name: 'Text to Speech',
+    cmd: ['say', 'tts', 'gtts'],
+    tags: 'Tools Menu',
+    desc: 'Mengubah teks menjadi suara Google (Audio)',
+    owner: !1,
+    prefix: !0,
+    money: 100,
+    exp: 0.1,
+
+    run: async (xp, m, {
+      chat,
+      cmd,
+      prefix,
+      args // 👈 Kita pakai args, bukan text
+    }) => {
+      try {
+        // Gabungkan kata-kata setelah command menjadi satu kalimat
+        const isiTeks = args.join(' ')
+
+        if (!isiTeks) return xp.sendMessage(chat.id, { 
+            text: `⚠️ *Teksnya mana komandan?*\n\nContoh penggunaan:\n*${prefix}${cmd} Halo semuanya selamat datang*` 
+        }, { quoted: m })
+
+        await xp.sendMessage(chat.id, { react: { text: '🗣️', key: m.key } })
+
+        // Generate URL Audio dari Google TTS
+        const audioUrl = googleTTS.getAudioUrl(isiTeks, {
+            lang: 'id', // id = Bahasa Indonesia
+            slow: false,
+            host: 'https://translate.google.com',
+        })
+
+        // Mengirim URL sebagai Pesan Audio
+        await xp.sendMessage(chat.id, {
+            audio: { url: audioUrl },
+            mimetype: 'audio/mpeg',
+            ptt: false // Jadikan Audio Musik agar tidak error
+        }, { quoted: m })
+
+      } catch (e) {
+        if (typeof err === 'function') err(`error pada ${cmd}`, e)
+        xp.sendMessage(chat.id, { text: `❌ Terjadi kesalahan saat memproses suara.` }, { quoted: m })
       }
     }
   })

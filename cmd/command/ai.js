@@ -3,6 +3,7 @@ import fetch from 'node-fetch'
 import { fileTypeFromBuffer } from 'file-type'
 import fs from 'fs'
 import path from 'path'
+import { AIBanana } from '../../lib/scraper/aibanana.js'
 import { ChatGPT } from '../../lib/scraper/chatgpt.js' 
 import { downloadMediaMessage } from 'baileys'
 const config = JSON.parse(fs.readFileSync('./system/set/config.json'))
@@ -65,7 +66,6 @@ async function fetchAthaAI(prompt, sessionId) {
 }
 
 export default function ai(ev) {
-
   ev.on({
     name: 'ChatGPT Ai',
     cmd: ['gpt', 'chatgpt'],
@@ -142,7 +142,91 @@ export default function ai(ev) {
       }
     }
   })
+
+  ev.on({
+    name: 'AI Image Banana',
+    cmd: ['aiimg', 'imagine', 'txt2img'],
+    tags: 'Ai Menu',
+    desc: 'Membuat gambar AI dari teks deskripsi',
+    owner: !1,
+    prefix: !0,
+
+    run: async (xp, m, { args, chat, prefix, cmd }) => {
+      try {
+        const prompt = args.join(' ')
+        if (!prompt) {
+          return xp.sendMessage(chat.id, { 
+              text: `⚠️ *Harap masukkan deskripsi gambar!*\n\nContoh penggunaan:\n*${prefix}${cmd} cat drinking coffee in a cyberpunk city*` 
+          }, { quoted: m })
+        }
   
+        // Kirim reaksi dan pesan loading
+        await xp.sendMessage(chat.id, { react: { text: '⏳', key: m.key } })
+        const loadingMsg = await xp.sendMessage(chat.id, { text: '🎨 Sedang melukis mahakarya, tunggu sebentar komandan...' }, { quoted: m })
+
+        // Eksekusi scraper
+        const banana = new AIBanana()
+        const result = await banana.generateImage(prompt)
+
+        let imageUrl = ''
+      
+        // Deteksi struktur response API secara brutal (Aman dari tipe data ghaib)
+        if (typeof result === 'string') {
+            imageUrl = result
+        } else if (result?.images?.[0]) {
+            imageUrl = result.images[0]
+        } else if (result?.image) {
+            imageUrl = result.image
+        } else if (result?.url) {
+            imageUrl = result.url
+        } else if (result?.data?.[0]?.url) {
+            imageUrl = result.data[0].url
+        } else if (result?.data?.[0]?.b64_json) {
+            imageUrl = result.data[0].b64_json
+        } else {
+            // Jika struktur JSON benar-benar aneh, cetak ke terminal
+            console.log('Result AI Banana:', JSON.stringify(result, null, 2))
+            return xp.sendMessage(chat.id, { text: '❌ Server AI berhasil memproses, tapi gagal membaca format gambar. Cek log terminal komandan!' }, { quoted: m })
+        }
+
+        // Benteng Pertahanan: Pastikan imageUrl adalah String sebelum dieksekusi
+        if (typeof imageUrl !== 'string') {
+            imageUrl = String(imageUrl) // Paksa jadi string jika membandel
+        }
+
+        let finalMedia;
+      
+        // Eksekusi Gambar sesuai Formatnya
+        if (imageUrl.startsWith('http')) {
+            // Format Link URL
+            finalMedia = { url: imageUrl }
+        } else if (imageUrl.startsWith('data:image')) {
+            // Format Base64 ber-prefix
+            const base64Data = imageUrl.split(';base64,').pop()
+            finalMedia = Buffer.from(base64Data, 'base64')
+        } else {
+            // Format Base64 mentah murni (tanpa prefix data:image)
+            finalMedia = Buffer.from(imageUrl, 'base64')
+        }
+
+        // Kirim hasil gambar
+        await xp.sendMessage(chat.id, { 
+            image: finalMedia, 
+            caption: `🎨 *Prompt:* ${prompt}\n✨ *Source:* AIBanana Model`,
+        }, { quoted: m })
+
+        // Edit pesan loading jadi sukses
+        await xp.sendMessage(chat.id, { text: '✅ Mahakarya berhasil dilukis!', edit: loadingMsg.key })
+        await xp.sendMessage(chat.id, { react: { text: '✅', key: m.key } })
+
+      } catch (err) {
+        console.error(err)
+        await xp.sendMessage(chat.id, { text: '❌ *Gagal membuat gambar!*\nServer AI mungkin sedang sibuk atau sistem bypass Cloudflare gagal.' }, { quoted: m })
+        await xp.sendMessage(chat.id, { react: { text: '❌', key: m.key } })
+      }
+    }
+  })
+
   ev.on({
     name: 'imagine ai',
     cmd: ['imagine', 'flux'],
@@ -310,46 +394,65 @@ export default function ai(ev) {
   
   ev.on({
     name: 'auto ai',
-    cmd: ['ai', 'bell'],
+    cmd: ['autoai'],
     tags: 'Ai Menu',
-    desc: 'Fitur open ai',
+    desc: 'Fitur Auto AI khusus Grup dengan memori permanen',
     owner: !1,
     prefix: !0,
-    money: 100,
-    exp: 0.2,
 
-    run: async (xp, m, {
-      args,
-      chat,
-      cmd,
-      prefix
-    }) => {
+    run: async (xp, m, { args, chat, cmd, prefix }) => {
       try {
-        const val = args[0]?.toLowerCase();
+        if (!chat.group) return xp.sendMessage(chat.id, { text: '❌ Fitur Auto AI ini dirancang khusus untuk Grup!' }, { quoted: m })
 
-        if (!['on', 'off'].includes(val)) 
-          return xp.sendMessage(chat.id, { text: `Gunakan perintah ${prefix}${cmd} on/off` }, { quoted: m });
+        const val = args[0]?.toLowerCase()
 
-        const value = val === 'on',
-              userdb = Object.values(db().key).find(u => u.jid === chat.sender),
-              opsi = !!userdb?.ai?.bell
-
-        if ((value && opsi) || (!value && !opsi)) {
-          return xp.sendMessage(chat.id, { text: `${cmd} sudah ${value ? 'aktif' : 'nonaktif'}`
-          }, { quoted: m })
+        if (!['on', 'off', 'reset'].includes(val)) {
+          let txt = `⚙️ *SETTING AUTO AI GRUP*\n\n`
+          txt += `Gunakan perintah:\n`
+          txt += `👉 *${prefix}${cmd} on* (Aktifkan Auto AI)\n`
+          txt += `👉 *${prefix}${cmd} off* (Matikan Auto AI)\n`
+          txt += `👉 *${prefix}${cmd} reset* (Hapus ingatan AI di grup ini)`
+          return xp.sendMessage(chat.id, { text: txt }, { quoted: m })
         }
 
-        userdb.ai.bell = value
-        save.db()
+        // Setup Database JSON Permanen
+        const dbFolder = './system/db'
+        const dbPath = './system/db/autoai.json'
 
-        xp.sendMessage(chat.id, { text: `${cmd} telah ${value ? 'diaktifkan' : 'dinonaktifkan'}.` }, { quoted: m })
+        if (!fs.existsSync(dbFolder)) fs.mkdirSync(dbFolder, { recursive: true })
+        if (!fs.existsSync(dbPath)) fs.writeFileSync(dbPath, JSON.stringify({}))
+        
+        const aiDb = JSON.parse(fs.readFileSync(dbPath))
+
+        if (!aiDb[chat.id]) {
+          aiDb[chat.id] = { status: false, conversationId: null, messageId: null }
+        }
+
+        // Fitur Reset Memori Grup
+        if (val === 'reset') {
+           aiDb[chat.id].conversationId = null
+           aiDb[chat.id].messageId = null
+           fs.writeFileSync(dbPath, JSON.stringify(aiDb, null, 2))
+           return xp.sendMessage(chat.id, { text: '✅ Ingatan Auto AI di grup ini berhasil dicuci bersih!' }, { quoted: m })
+        }
+
+        const value = val === 'on'
+        const opsi = aiDb[chat.id].status
+
+        if ((value && opsi) || (!value && !opsi)) {
+          return xp.sendMessage(chat.id, { text: `⚠️ Auto AI sudah dalam keadaan ${value ? 'AKTIF' : 'NONAKTIF'} di grup ini.` }, { quoted: m })
+        }
+
+        aiDb[chat.id].status = value
+        fs.writeFileSync(dbPath, JSON.stringify(aiDb, null, 2))
+
+        await xp.sendMessage(chat.id, { text: `✅ Auto AI berhasil ${value ? '*DIAKTIFKAN*' : '*DINONAKTIFKAN*'} untuk grup ini.` }, { quoted: m })
       } catch (e) {
-        err(`error pada ${cmd}`, e)
-        call(xp, e, m)
+        console.error(`Error pada ${cmd}:`, e)
       }
     }
   })
-  
+
     ev.on({
     name: 'atha ai',
     cmd: ['atha', 'ask'], // Jangan pakai 'ai' lagi biar nggak bentrok dengan auto ai
