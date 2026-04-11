@@ -3,14 +3,17 @@ import fs from "fs"
 import p from "path"
 import EventEmitter from "events"
 import getMessageContent from '../system/msg.js'
-import { authUser, role } from '../system/db/data.js'
+import { authUser, role } from '../system/db/data.js' // Nanti ini juga harus kita rombak
 import { own } from '../system/helper.js'
 import { cekSpam, _tax } from '../system/function.js'
 import { ocrs } from './ocrs.js'
 import { pathToFileURL } from "url"
 
+// ☁️ IMPORT SUPABASE YANG BARU DIBUAT
+import supabase from '../system/db/supabase.js' 
+
 const dirs = [
-    p.join(dirname, "../cmd/command") // <-- Folder detector sudah dihapus dari sini agar aman
+    p.join(process.cwd(), "./cmd/command")
 ]
 
 const _idCmd = def => {
@@ -53,7 +56,7 @@ class CmdEmitter extends EventEmitter {
           def.call += 1
           await def.run(xp, m, extra)
         } catch (e) {
-          err(c.redBright.bold(`Error ${def.name || c2}: `), e)
+          console.error(c.redBright.bold(`Error ${def.name || c2}: `), e)
         }
       }
 
@@ -66,22 +69,6 @@ class CmdEmitter extends EventEmitter {
 }
 
 const ev = new CmdEmitter()
-
-const unloadFile = file => {
-  if (!file || !ev.cmd) return
-
-  const targets = ev.cmd.filter(x => x.file === file)
-  if (!targets.length) return
-
-  for (const t of targets) {
-    if (t.handlers?.size) {
-      for (const [cmd, fn] of t.handlers)
-        ev.removeListener(cmd, fn)
-    }
-  }
-
-  ev.cmd = ev.cmd.filter(x => x.file !== file)
-}
 
 const loadFile = async (obj, reload = true) => {
   try {
@@ -109,7 +96,6 @@ const loadAll = async () => {
   const cmds = ev.cmd?.map(x => x.name) || []
   const total = cmds.length
 
-  // Tampilan log terminal yang lebih keren dan rapi
   console.log(
     c.cyanBright.bold(`\n╭─── [ 🚀 C O D E _ B O T   C M D ] ───⬣\n`) +
     c.whiteBright(`│ `) + c.greenBright(`Total     : `) + c.yellowBright.bold(`${total} Commands Terdaftar\n`) +
@@ -127,14 +113,14 @@ const watch = () => {
         if (!f?.endsWith(".js")) return
         clearTimeout(Deb_timer[f])
         Deb_timer[f] = setTimeout(() => {
-          log(c.cyanBright.bold(`${f} diedit`))
+          console.log(c.cyanBright.bold(`${f} diedit`))
           loadFile({ file: f, dir: d }, true)
         }, 300)
       })
     } catch {
       for (const f of fs.readdirSync(d).filter(x => x.endsWith(".js"))) {
         fs.watchFile(p.join(d, f), () => {
-          log(c.cyanBright.bold(`${f} diedit`))
+          console.log(c.cyanBright.bold(`${f} diedit`))
           loadFile({ file: f, dir: d }, true)
         })
       }
@@ -145,43 +131,35 @@ const watch = () => {
 const handleCmd = async (m, xp, store) => {
   try {
     const { text } = getMessageContent(m)
-    
-    // Kembali normal: Mengabaikan stiker dan file tanpa teks
     if (!text || !m.key) return
 
-    // 1. Definisikan chat lebih awal agar bisa dikirim ke event detector
     const chat = global.chat(m)
-
+    
     // ==========================================
-    // ✨ CCTV TRACKER SILENT READER (Tetap Aman)
+    // ✨ CCTV TRACKER SILENT READER (Diubah ke Supabase)
     // ==========================================
     if (chat.group && chat.sender) {
-        // Cari database user yang sedang mengirim pesan
-        const userDb = Object.values(db().key).find(u => u.jid === chat.sender) || db().key[chat.sender]
-        if (userDb) {
-            // Gunakan timestamp asli dari Meta (Akurat walau bot sempat mati)
-            const waktuAsli = m.messageTimestamp ? (m.messageTimestamp * 1000) : Date.now()
-            userDb.lastchat = waktuAsli
-        }
+        const waktuAsli = m.messageTimestamp ? (m.messageTimestamp * 1000) : Date.now()
+        // Langsung tembak ke cloud tanpa await (anti delay)
+        supabase.from('users').update({ last_chat: waktuAsli }).eq('id', chat.sender).then()
     }
     // ==========================================
 
-    // 2. Pancarkan event 'message' untuk semua file detector sebelum pengecekan command
     ev.emit('message', xp, m, { chat, text, store })
 
-    const bank = JSON.parse(fs.readFileSync(p.join(dirname, './db/bank.json'), 'utf-8')),
-          pfx = [].concat(global.prefix),
+    // HAPUS PEMBACAAN bank.json DARI SINI
+    // const bank = JSON.parse(fs.readFileSync(p.join(dirname, './db/bank.json'), 'utf-8'))
+
+    const pfx = [].concat(global.prefix),
           pre = pfx.find(p => text.startsWith(p)) || '',
           cmdText = pre ? text.slice(pre.length).trim() : text.trim(),
           [cmd, ...args] = cmdText.split(/\s+/),
           _cmdLow = cmd?.toLowerCase()
           
-    // 3. Hentikan eksekusi command jika bukan command
     if (!_cmdLow) return
     if (await ocrs(xp, m)) return
 
     const sender = chat.sender?.replace(/@s\.whatsapp\.net$/, ''),
-          usr = Object.values(db().key).find(u => u.jid === chat.sender),
           ownerNum = [].concat(global.ownerNumber).map(n => n?.replace(/[^0-9]/g, '')),
           evData = ev.cmd?.find(e =>
             e.name?.toLowerCase() === _cmdLow ||
@@ -189,8 +167,6 @@ const handleCmd = async (m, xp, store) => {
           )
 
     if (!evData || ((evData.prefix ?? !0) ? !pre : pre)) return
-
-    // <-- Blokir Grup Dobel sudah dibersihkan dari sini -->
 
     let sub = null
 
@@ -202,42 +178,50 @@ const handleCmd = async (m, xp, store) => {
       }
     }
 
-    await authUser(m)
+    // ==========================================
+    // ☁️ SUPABASE: AMBIL DATA USER
+    // ==========================================
+    let { data: usr, error } = await supabase.from('users').select('*').eq('id', chat.sender).single()
+    
+    // Jika belum terdaftar di database Supabase, daftarkan otomatis
+    if (!usr) {
+        const { data: newUser } = await supabase.from('users')
+            .insert([{ id: chat.sender, money: 1000, bank: 0, exp: 0 }])
+            .select().single()
+        usr = newUser
+    }
 
-    if (!usr ? (xp.sendMessage(chat.id, { text: 'ulangi' }, { quoted: m }), true) : ((!global.public || evData.owner) && !ownerNum.includes(sender)) ? true : await cekSpam(xp, m)) return
+    // Cek apakah bukan owner
+    if (((!global.public || evData.owner) && !ownerNum.includes(sender)) ? true : await cekSpam(xp, m)) return
 
     const exp = evData.exp ?? 0.1,
           expInt = Math.round(exp * 10)
 
-    let needSv = !1,
-        cost = evData.money
+    let cost = evData.money
 
     if (usr) {
-      usr.cmd = (usr.cmd || 0) + 1
       usr.exp = (usr.exp || 0) + expInt
-      role()
-      needSv = !0
+      // role() // Harus disesuaikan karena pakai data Supabase
     }
 
     if (!cost || cost <= 0) cost = await _tax(xp, m)
 
     if (cost > 0) {
-      if ((usr.moneyDb?.money || 0) < cost)
-        return xp.sendMessage(chat.id, { text: `uang kamu tersisa Rp ${usr.moneyDb.money.toLocaleString('id-ID')}\n` + `butuh: Rp ${cost.toLocaleString('id-ID')}` }, { quoted: m })
+      if ((usr.money || 0) < cost)
+        return xp.sendMessage(chat.id, { text: `⚠️ Uang kamu tersisa Rp ${(usr.money||0).toLocaleString('id-ID')}\nButuh: Rp ${cost.toLocaleString('id-ID')}` }, { quoted: m })
 
-      usr.moneyDb.money -= cost
-      bank.key.saldo += cost
-
-      fs.writeFileSync(
-        p.join(dirname, './db/bank.json'),
-        JSON.stringify(bank, null, 2),
-        'utf-8'
-      )
-
-      needSv = !0
+      // Update Saldo User ke Supabase
+      usr.money -= cost
+      await supabase.from('users').update({ 
+          money: usr.money, 
+          exp: usr.exp 
+      }).eq('id', chat.sender)
+    } else {
+      // Update Exp doang kalau command gratis
+      await supabase.from('users').update({ exp: usr.exp }).eq('id', chat.sender)
     }
 
-    needSv && await save.db()
+    // save.db() <-- HAPUS INI KARENA UDAH PAKAI SUPABASE
     
     await xp.sendPresenceUpdate('composing', chat.id).catch(() => {})
 
@@ -248,10 +232,11 @@ const handleCmd = async (m, xp, store) => {
       cmd: _cmdLow,
       prefix: pre,
       ocrs: sub,
-      store
+      store,
+      dbUser: usr // Pass data dari supabase ke fungsi command
     })
   } catch (e) {
-    err('error pada handleCmd', e)
+    console.error('error pada handleCmd', e)
   }
 }
 
